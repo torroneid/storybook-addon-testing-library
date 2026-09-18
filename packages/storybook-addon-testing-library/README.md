@@ -98,8 +98,10 @@ const config: StorybookConfig = {
 export default config;
 ```
 
-`setupFiles` run once before the first test, exactly like `setupFiles` in Vitest. A typical setup file makes
-`composeStories` use the same decorators and parameters as Storybook itself:
+### The setup file
+
+Point `setupFiles` at the setup file your Vitest config already uses. Nothing in it is specific to this addon — it is
+run as it is, once before the first test, the same way Vitest runs it:
 
 ```ts
 // vitest-setup.ts
@@ -113,6 +115,24 @@ expect.extend(matchers);
 const annotations = setProjectAnnotations([preview]);
 beforeAll(annotations.beforeAll);
 ```
+
+What matters here is `setProjectAnnotations`. It is what gives `composeStories` the decorators, parameters, globals
+and loaders from `.storybook/preview`. Leave it out and the tests still run, but a composed story renders without
+your preview decorators — so it can look different from the story right next to it, and a test that depends on a
+decorator (a theme or a form provider, say) will fail.
+
+`expect.extend(matchers)` is not needed for this addon: `expect` comes from `storybook/test`, which already has the
+jest-dom matchers. It does no harm, and Vitest still needs it.
+
+Two things to keep in mind:
+
+- The file runs in the browser, through Storybook's Vite server. Imports from `vitest` are served by the addon, so
+  `beforeAll`, `beforeEach`, `expect` and the `vi` spy helpers work. Node-only code, `vi.mock` and fake timers do not.
+  If your Vitest setup has such parts (a jsdom workaround, for example), guard them or move them to a separate file.
+- Paths are resolved from the directory you start Storybook in, like the `stories` globs in `main.ts`.
+
+Leaving `setupFiles` out entirely is fine if you have no setup file: assertions, spies and Testing Library all work
+without one.
 
 ### Options
 
