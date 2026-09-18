@@ -1,0 +1,89 @@
+{
+  "name": "storybook-addon-testing-library",
+  "version": "0.1.0",
+  "description": "Run your existing Testing Library specs inside the Storybook canvas, under the stories they use, with step-by-step debugging",
+  "keywords": [
+    "storybook-addons",
+    "storybook",
+    "testing-library",
+    "react-testing-library",
+    "vitest",
+    "test",
+    "testing",
+    "component-tests",
+    "debugging",
+    "react"
+  ],
+  "homepage": "https://github.com/torroneid/storybook-addon-testing-library#readme",
+  "bugs": {
+    "url": "https://github.com/torroneid/storybook-addon-testing-library/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/torroneid/storybook-addon-testing-library.git",
+    "directory": "packages/storybook-addon-testing-library"
+  },
+  "license": "MIT",
+  "author": "Tor Røneid",
+  "type": "module",
+  "exports": {
+    "./preset": "./dist/preset.js",
+    "./manager": "./dist/manager.js",
+    "./preview": "./dist/preview/preview.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch",
+    "prepack": "npm run build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "rrweb-snapshot": "^2.1.4",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@testing-library/react": ">=16",
+    "@testing-library/user-event": ">=14",
+    "react": ">=18",
+    "storybook": "^10.6.0",
+    "vite": ">=6"
+  },
+  "peerDependenciesMeta": {
+    "@testing-library/react": {
+      "optional": true
+    },
+    "@testing-library/user-event": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@storybook/react-vite": "10.6.0",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.7",
+    "@types/node": "22.20.3",
+    "@types/react": "19.3.0",
+    "react": "19.3.0",
+    "storybook": "10.6.0",
+    "vite": "8.3.0",
+    "vitest": "5.0.1"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "storybook": {
+    "displayName": "Testing Library",
+    "supportedFrameworks": [
+      "react"
+    ]
+  }
+}

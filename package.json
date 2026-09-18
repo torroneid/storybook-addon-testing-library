@@ -1,0 +1,24 @@
+{
+  "name": "storybook-addon-testing-library-repo",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "example"
+  ],
+  "scripts": {
+    "build": "npm run build -w storybook-addon-testing-library",
+    "dev": "npm run dev -w storybook-addon-testing-library",
+    "storybook": "npm run build && npm run storybook -w example",
+    "test": "npm test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "3.9.6"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}
