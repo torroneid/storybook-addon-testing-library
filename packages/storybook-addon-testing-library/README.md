@@ -19,11 +19,57 @@ the component already lives:
   also after an ordinary run.
 - **Find the tests.** Each story lists the specs that use it, so a component's tests are one click away.
 
-## Requirements
+## What you need
+
+**In your project**
 
 - Storybook 10.6 or later with Vite (`@storybook/react-vite`)
 - React 18 or later
-- Specs written with `@testing-library/react` (and optionally `@testing-library/user-event`)
+- Specs written with `@testing-library/react`, and `@testing-library/user-event` if you use it
+
+**In a spec file, to have its tests listed under a story**
+
+Use the story through `composeStories` (or `composeStory`). That is what links a test to a story:
+
+```tsx
+import { composeStories } from '@storybook/react-vite';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+import * as stories from './Counter.stories';
+
+const { Default } = composeStories(stories);
+
+describe('Counter', () => {
+  it('increments when clicked', async () => {
+    render(<Default />); // or: await Default.run()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add one' }));
+
+    expect(screen.getByText('Value: 1')).toBeInTheDocument();
+  });
+});
+```
+
+A spec file named after a stories file (`Counter.spec.tsx` ↔ `Counter.stories.tsx`) is also listed on those stories,
+under **Other tests in this file**, even without `composeStories`.
+
+**What you do not need**
+
+- **Vitest browser mode, Playwright or a browser install.** The addon runs the specs itself, in the browser that is
+  already showing your Storybook. Specs that run in Vitest with jsdom work as they are.
+- **Vitest running at all** while you use the addon.
+- **Changes to your tests.** Nothing in a spec file has to be rewritten, and nothing addon-specific is imported.
+
+**What cannot be used in a spec the addon runs**
+
+- Browser-mode APIs from `vitest/browser`: `page`, `userEvent` from that package, locators, `commands`, `server`.
+  Those need Vitest's own browser runner. Testing Library covers the same ground here.
+- `vi.mock`, fake timers and other `vi.*` functions beyond the spy helpers, and async `describe` blocks. You get a
+  clear error instead of a silent difference.
+- Node-only APIs such as `node:fs`, since the tests run in the browser.
+
+Such a spec still runs in Vitest as before. It just cannot be run from the panel.
 
 ## Install
 
@@ -135,11 +181,8 @@ Names from `.each`/`.for` (`%s`, `%d`, `$variable` …) are turned into patterns
   `vi.restoreAllMocks` — all from `storybook/test`, which builds on the same `@vitest/expect` and `@vitest/spy` as
   Vitest
 
-Not supported, with a clear error when you hit it:
-
-- `vi.mock`, fake timers and other `vi.*` functions
-- async `describe` blocks
-- Only `storybook dev` — a static build has no dev server to load the specs from
+See [What you need](#what-you-need) for what a spec cannot use. The addon is only active in `storybook dev`; a static
+build has no dev server to load the specs from.
 
 Two more things worth knowing:
 
@@ -148,14 +191,52 @@ Two more things worth knowing:
   do not appear as steps.
 - `expect` comes from `storybook/test`, so assertions also show up in Storybook's Interactions panel.
 
-## Compared to other tools
+## Compared to Storybook play functions
 
-- [`@storybook/addon-vitest`](https://storybook.js.org/docs/writing-tests/integrations/vitest-addon) runs your
-  **stories** as tests in a separate Vitest process, and is the right tool for running a whole suite and for CI.
-  This addon runs your **specs**, in the browser you already have open, and lets you stop inside one.
-- **Vitest 5's trace view** records a run you inspect afterwards, and captures interactions made through
-  `vitest/browser`. Testing Library calls do not show up there. This addon works the other way around: it recognises
-  Testing Library calls and lets you pause live.
+A `play` function can already be stepped through in the Interactions panel, so it is the closest relative to this
+addon. The difference is where the test lives.
+
+|                      | Play functions                                                   | This addon                                                                |
+| -------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Where the test is    | In the stories file, one per story                               | In your spec files, any number per story                                  |
+| What is instrumented | `userEvent`, `expect` and friends from `storybook/test`          | `@testing-library/react`, `@testing-library/user-event`, `composeStories` |
+| Test structure       | One flow per story                                               | `describe`/`it`, hooks, `.each`, spies                                    |
+| Going back a step    | Remounts the story and replays the play function up to that call | Shows a stored DOM snapshot, without re-running                           |
+| Also runs in         | Vitest through `@storybook/addon-vitest`                         | Vitest as the specs already do                                            |
+
+Play functions are the better choice when the interaction _is_ the story: a demo of a flow that everyone looking at
+the story should see. This addon is for the tests you already have, with assertions, mocks and edge cases that do not
+belong in a story.
+
+They work side by side. Since assertions in specs go through `storybook/test`, they also show up in the Interactions
+panel.
+
+## Compared to Vitest browser mode
+
+Vitest browser mode runs your tests in a real browser through Playwright or WebdriverIO. It is a test runner: an
+isolated browser per run, real events through the browser driver, CI support, coverage and retries. Keep using it —
+this addon does not replace it.
+
+|                | Vitest browser mode                                                         | This addon                                                      |
+| -------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Runs in        | A browser it launches for the run                                           | The Storybook tab you already have open                         |
+| Events         | Real events from the browser driver (`page`, locators)                      | Testing Library events, dispatched from JavaScript              |
+| Pausing        | No pause or step API: use `debugger` and devtools in a headed browser       | Pause before each interaction, with the element highlighted     |
+| After the run  | Vitest 5 can record a trace view you inspect afterwards                     | The DOM stays in the canvas, with a snapshot per step           |
+| What it traces | Interactions through `vitest/browser`; Testing Library calls do not show up | Testing Library calls, `render`, `fireEvent` and every `expect` |
+| Good for       | Running the suite, CI, real browser behaviour                               | Working on one failing test next to the component               |
+
+You do not need browser mode to use this addon, and the addon does not give you browser-mode APIs. Specs that use
+`page` or locators from `vitest/browser` belong in Vitest.
+
+## Compared to @storybook/addon-vitest
+
+[`@storybook/addon-vitest`](https://storybook.js.org/docs/writing-tests/integrations/vitest-addon) turns your
+**stories** into tests and runs them in a separate Vitest process, with results in the Storybook sidebar. It is the
+right tool for running a whole suite from Storybook and in CI.
+
+This addon runs your **specs** instead, in the browser you already have open, and lets you stop inside one. The two
+can be installed together.
 
 ## How it works
 

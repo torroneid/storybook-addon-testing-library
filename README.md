@@ -36,10 +36,14 @@ addons: [
 ],
 ```
 
+You need Storybook 10.6 or later with Vite, React 18 or later, and specs written with `@testing-library/react`. A test
+is listed under a story when it uses that story through `composeStories`. You do not need Vitest browser mode,
+Playwright or any change to your tests.
+
 The full documentation is in
-[the addon's README](packages/storybook-addon-testing-library/README.md#storybook-addon-testing-library): options,
-what is supported, how tests are linked to stories, and how it compares to `@storybook/addon-vitest` and Vitest's
-trace view.
+[the addon's README](packages/storybook-addon-testing-library/README.md#storybook-addon-testing-library): what you
+need, options, how tests are linked to stories, and how it compares to Storybook play functions, Vitest browser mode
+and `@storybook/addon-vitest`.
 
 ## This repository
 
