@@ -249,6 +249,33 @@ this addon does not replace it.
 You do not need browser mode to use this addon, and the addon does not give you browser-mode APIs. Specs that use
 `page` or locators from `vitest/browser` belong in Vitest.
 
+## Compared to Playwright
+
+Playwright drives a real browser and is mainly an end-to-end tool, with component testing available as
+`@playwright/experimental-ct-react`. Its debugging tools are the most capable of the lot, and this addon does not try
+to match them:
+
+- **Trace viewer** records every action with a DOM snapshot, plus network, console and the source line, and you step
+  through the whole test afterwards.
+- **UI mode** (`playwright test --ui`) gives the same time travel while you develop, with watch mode.
+- **`await page.pause()`** stops a headed run and opens the Inspector, where you step through the remaining actions
+  and try selectors by hand.
+
+The differences are what is being tested and how fast you get there:
+
+|               | Playwright                                                  | This addon                                                     |
+| ------------- | ----------------------------------------------------------- | -------------------------------------------------------------- |
+| Scope         | The running app end to end (or a mounted component with CT) | The component, through the stories and specs you already have  |
+| Test API      | Playwright's own locators and `expect`                      | Testing Library, unchanged                                     |
+| Setup         | Browser downloads, a served app or CT setup                 | The Storybook you are already running                          |
+| Debugging     | Trace viewer and UI mode: actions, network, console, source | Steps and DOM snapshots in the canvas, live, next to the story |
+| Feedback loop | Start a run, then inspect it                                | Press ⏯ on a test in the panel                                 |
+| Runs in CI    | Yes, this is where it belongs                               | No — your specs keep running in Vitest for that                |
+
+They cover different layers, so the natural split is Playwright for end-to-end, Vitest for the suite, and this addon
+while you work on a component test. Note that Vitest browser mode uses Playwright as its driver — see the section
+above for that combination.
+
 ## Compared to @storybook/addon-vitest
 
 [`@storybook/addon-vitest`](https://storybook.js.org/docs/writing-tests/integrations/vitest-addon) turns your
