@@ -213,77 +213,68 @@ Two more things worth knowing:
 
 ## Compared to Storybook play functions
 
-A `play` function can already be stepped through in the Interactions panel, so it is the closest relative to this
-addon. The difference is where the test lives.
+Storybook cannot run an ordinary Testing Library spec. To get one of your tests into Storybook today, you have to
+rewrite it as a `play` function on a story:
 
-|                      | Play functions                                                   | This addon                                                                |
-| -------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Where the test is    | In the stories file, one per story                               | In your spec files, any number per story                                  |
-| What is instrumented | `userEvent`, `expect` and friends from `storybook/test`          | `@testing-library/react`, `@testing-library/user-event`, `composeStories` |
-| Test structure       | One flow per story                                               | `describe`/`it`, hooks, `.each`, spies                                    |
-| Going back a step    | Remounts the story and replays the play function up to that call | Shows a stored DOM snapshot, without re-running                           |
-| Also runs in         | Vitest through `@storybook/addon-vitest`                         | Vitest as the specs already do                                            |
+- The test moves into the stories file, as **one flow per story**. There is no `describe`/`it`, no hooks, no `.each`
+  and nowhere to put the mocks and edge cases that make up most of a spec suite.
+- There is no `render(...)`: the story renders itself, and you query `canvasElement`.
+- Interactions have to go through **`storybook/test`** (`userEvent`, `expect`, `within`) rather than Testing Library.
+  Plain Testing Library calls do run inside a play function, but they are not instrumented, so they never reach the
+  Interactions panel and cannot be stepped through.
 
-Play functions are the better choice when the interaction _is_ the story: a demo of a flow that everyone looking at
-the story should see. This addon is for the tests you already have, with assertions, mocks and edge cases that do not
-belong in a story.
+In other words, the price of stepping through a test in Storybook is rewriting it against Storybook's own wrappers,
+and keeping it in the stories file. This addon runs the spec file as it is instead, and turns your Testing Library
+calls into the steps.
 
-They work side by side. Since assertions in specs go through `storybook/test`, they also show up in the Interactions
-panel.
+|                   | Play functions                                                   | This addon                                                                |
+| ----------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| The test lives    | In the stories file, one flow per story                          | In your spec files, any number per story                                  |
+| Written with      | `storybook/test`                                                 | `@testing-library/react`, `@testing-library/user-event`, `composeStories` |
+| Test structure    | A single play function                                           | `describe`/`it`, hooks, `.each`, spies                                    |
+| Going back a step | Remounts the story and replays the play function up to that call | Shows a stored DOM snapshot, without re-running                           |
+
+Play functions are still the better choice when the interaction _is_ the story: a flow everyone looking at the story
+should see. The two work side by side — because assertions in specs go through `storybook/test` under the hood, they
+also show up in the Interactions panel.
 
 ## Compared to Vitest browser mode
 
-Vitest browser mode runs your tests in a real browser through Playwright or WebdriverIO. It is a test runner: an
-isolated browser per run, real events through the browser driver, CI support, coverage and retries. Keep using it —
-this addon does not replace it.
+Vitest browser mode runs tests in a real browser it launches, in its own UI, and is a proper test runner: real events
+through the browser driver, CI support, coverage and retries. Keep using it — this addon does not replace it.
 
-|                | Vitest browser mode                                                         | This addon                                                      |
-| -------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| Runs in        | A browser it launches for the run                                           | The Storybook tab you already have open                         |
-| Events         | Real events from the browser driver (`page`, locators)                      | Testing Library events, dispatched from JavaScript              |
-| Pausing        | No pause or step API: use `debugger` and devtools in a headed browser       | Pause before each interaction, with the element highlighted     |
-| After the run  | Vitest 5 can record a trace view you inspect afterwards                     | The DOM stays in the canvas, with a snapshot per step           |
-| What it traces | Interactions through `vitest/browser`; Testing Library calls do not show up | Testing Library calls, `render`, `fireEvent` and every `expect` |
-| Good for       | Running the suite, CI, real browser behaviour                               | Working on one failing test next to the component               |
+For **debugging a Testing Library spec**, though, it gives you little:
+
+- There is no pause or step API. You are left with `debugger` and devtools in a headed browser.
+- The closest thing to stepping is the trace view in Vitest 5, which you inspect after the run. It only records
+  interactions made through `vitest/browser` — `page`, locators and its own `userEvent`. A spec written with Testing
+  Library produces a trace with nothing in it but the start and end of the test.
+- To get a trace worth stepping through, you would have to **replace Testing Library with the browser-mode APIs**,
+  which ties those tests to browser mode.
+
+|                 | Vitest browser mode                                                 | This addon                                                  |
+| --------------- | ------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Runs in         | A browser it launches, in its own UI                                | The Storybook tab you already have open                     |
+| Events          | Real events from the browser driver (`page`, locators)              | Testing Library events, dispatched from JavaScript          |
+| Stepping        | None; trace view after the run, and only for `vitest/browser` calls | Pause before each interaction, with the element highlighted |
+| Testing Library | Runs, but is invisible to the trace                                 | Is what the steps are made of                               |
+| Good for        | Running the suite, CI, real browser behaviour                       | Working on one failing test next to the component           |
 
 You do not need browser mode to use this addon, and the addon does not give you browser-mode APIs. Specs that use
 `page` or locators from `vitest/browser` belong in Vitest.
 
-## Compared to Playwright
-
-Playwright drives a real browser and is mainly an end-to-end tool, with component testing available as
-`@playwright/experimental-ct-react`. Its debugging tools are the most capable of the lot, and this addon does not try
-to match them:
-
-- **Trace viewer** records every action with a DOM snapshot, plus network, console and the source line, and you step
-  through the whole test afterwards.
-- **UI mode** (`playwright test --ui`) gives the same time travel while you develop, with watch mode.
-- **`await page.pause()`** stops a headed run and opens the Inspector, where you step through the remaining actions
-  and try selectors by hand.
-
-The differences are what is being tested and how fast you get there:
-
-|               | Playwright                                                  | This addon                                                     |
-| ------------- | ----------------------------------------------------------- | -------------------------------------------------------------- |
-| Scope         | The running app end to end (or a mounted component with CT) | The component, through the stories and specs you already have  |
-| Test API      | Playwright's own locators and `expect`                      | Testing Library, unchanged                                     |
-| Setup         | Browser downloads, a served app or CT setup                 | The Storybook you are already running                          |
-| Debugging     | Trace viewer and UI mode: actions, network, console, source | Steps and DOM snapshots in the canvas, live, next to the story |
-| Feedback loop | Start a run, then inspect it                                | Press ⏯ on a test in the panel                                 |
-| Runs in CI    | Yes, this is where it belongs                               | No — your specs keep running in Vitest for that                |
-
-They cover different layers, so the natural split is Playwright for end-to-end, Vitest for the suite, and this addon
-while you work on a component test. Note that Vitest browser mode uses Playwright as its driver — see the section
-above for that combination.
-
 ## Compared to @storybook/addon-vitest
 
-[`@storybook/addon-vitest`](https://storybook.js.org/docs/writing-tests/integrations/vitest-addon) turns your
-**stories** into tests and runs them in a separate Vitest process, with results in the Storybook sidebar. It is the
-right tool for running a whole suite from Storybook and in CI.
+[`@storybook/addon-vitest`](https://storybook.js.org/docs/writing-tests/integrations/vitest-addon) is Storybook's own
+test addon, and it runs your **stories** as tests in a separate Vitest process, with results in the sidebar. It is the
+right tool for running the suite from Storybook and in CI.
 
-This addon runs your **specs** instead, in the browser you already have open, and lets you stop inside one. The two
-can be installed together.
+It does not read your spec files. The Vitest project it sets up includes the stories globs and nothing else, so an
+existing Testing Library spec is neither listed nor runnable there — the same wall as with play functions: the test
+has to become a story with a play function first.
+
+This addon indexes the spec files instead, lists them under the stories they use, runs them in the canvas and lets you
+stop inside one. The two can be installed together.
 
 ## How it works
 

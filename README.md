@@ -46,14 +46,16 @@ need, the setup file, options, and how tests are linked to stories.
 
 ## How it compares
 
-| Tool                                                                                                                | What it is                                                                                | Next to this addon                                                                                   |
-| ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| [Storybook play functions](packages/storybook-addon-testing-library/README.md#compared-to-storybook-play-functions) | One interaction flow per story, steppable in the Interactions panel                       | Same idea, but for the specs you already have: `describe`/`it`, hooks, `.each`, mocks                |
-| [Vitest browser mode](packages/storybook-addon-testing-library/README.md#compared-to-vitest-browser-mode)           | A test runner that launches a real browser and drives it                                  | No pause or step API there; here you stop before each interaction, in the Storybook tab already open |
-| [Playwright](packages/storybook-addon-testing-library/README.md#compared-to-playwright)                             | End-to-end testing with the most capable debugging: trace viewer, UI mode, `page.pause()` | A different layer. This is the component, in Storybook, with a much shorter loop                     |
-| [`@storybook/addon-vitest`](packages/storybook-addon-testing-library/README.md#compared-to-storybookaddon-vitest)   | Runs your **stories** as tests in a separate Vitest process                               | Runs your **specs**, in the browser, and lets you stop inside one. Both can be installed             |
+None of these can run an ordinary Testing Library spec: the test has to be rewritten against Storybook's or Vitest's
+own APIs first.
 
-None of them are replaced by this addon: your specs keep running in Vitest, and CI keeps working as it does today.
+| Tool                                                                                                                | What it does                                                        | What it means for your specs                                                                              |
+| ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| [Storybook play functions](packages/storybook-addon-testing-library/README.md#compared-to-storybook-play-functions) | One interaction flow per story, steppable in the Interactions panel | You must move the test into a play function and write it with `storybook/test` instead of Testing Library |
+| [`@storybook/addon-vitest`](packages/storybook-addon-testing-library/README.md#compared-to-storybookaddon-vitest)   | Runs your **stories** as tests in a separate Vitest process         | Only stories are included; your spec files are neither listed nor runnable                                |
+| [Vitest browser mode](packages/storybook-addon-testing-library/README.md#compared-to-vitest-browser-mode)           | A test runner with its own browser and UI                           | No stepping; the trace view records only `vitest/browser` calls, so a Testing Library spec traces empty   |
+
+This addon replaces none of them. Your specs keep running in Vitest, and CI keeps working as it does today.
 
 ## This repository
 
