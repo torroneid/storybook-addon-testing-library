@@ -1,7 +1,10 @@
 name: Release
 
-# Publishes the addon to npm when a GitHub release is published.
-# Requires an NPM_TOKEN secret with publish access.
+# Publishes the addon to npm when a GitHub release is published, which only
+# maintainers can do. Needs an NPM_TOKEN secret with publish access.
+#
+# To release: bump the version in packages/storybook-addon-testing-library/package.json,
+# update CHANGELOG.md, then publish a GitHub release.
 
 on:
   release:

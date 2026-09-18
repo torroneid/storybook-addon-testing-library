@@ -68,12 +68,6 @@ picked up by Vite.
 | `LoginForm` | `vi.fn`, `userEvent.type`, a nested `describe`, `afterEach`, and a story used through a helper |
 | `Amount`    | A spec without `composeStories`, linked by file name, and `it.each` with `$variable`           |
 
-## Releasing
-
-`.github/workflows/release.yml` publishes the addon to npm when a GitHub release is published. It needs an
-`NPM_TOKEN` secret with publish access. Bump the version in
-`packages/storybook-addon-testing-library/package.json`, update `CHANGELOG.md`, then create the release.
-
 ## License
 
 MIT © Tor Røneid
