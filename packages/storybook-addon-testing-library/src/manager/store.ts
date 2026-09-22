@@ -355,6 +355,10 @@ export const connectToPreview = (managerApi: API) => {
   });
 
   managerApi.on(TEST_FINISHED, (result: TestResultFromPreview) => {
+    // A run the manager already ended (after a cancel with no answer) can still report
+    if (state.run?.runId !== result.runId) {
+      return;
+    }
     const specFile = indexStore.getState().specFiles.find(f => f.file === result.file);
     const storyIds = specFile?.tests.find(test => test.id === result.staticTestId)?.storyIds ?? [];
     setState(s => ({
@@ -365,7 +369,10 @@ export const connectToPreview = (managerApi: API) => {
     updateStatuses(storyIds);
   });
 
-  managerApi.on(FILE_ERROR, ({ file, error }: { runId: number; file: string; error: ErrorInfo[] }) => {
+  managerApi.on(FILE_ERROR, ({ runId, file, error }: { runId: number; file: string; error: ErrorInfo[] }) => {
+    if (state.run?.runId !== runId) {
+      return;
+    }
     setState(s => ({ ...s, fileErrors: { ...s.fileErrors, [file]: [...(s.fileErrors[file] ?? []), ...error] } }));
   });
 
