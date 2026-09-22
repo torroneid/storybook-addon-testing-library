@@ -15,6 +15,7 @@ import {
   FILE_ERROR,
   RUN,
   type RunRequest,
+  type RunSelection,
   RUN_FINISHED,
   type RunFinished,
   RUN_STARTED,
@@ -49,12 +50,6 @@ export const useSpecFiles = () => experimental_useUniversalStore(indexStore)[0].
 // ---------- Results from the preview ----------
 
 export type TestResult = TestResultFromPreview & { storyIds: string[] };
-
-export type RunSelection =
-  | { type: 'all' }
-  | { type: 'stories'; storyIds: string[] }
-  | { type: 'file'; file: string }
-  | { type: 'test'; file: string; testId: string };
 
 export type ResultState = {
   results: Record<string, TestResult>;
