@@ -32,6 +32,28 @@ describe('analyzeSpecFile', () => {
     ]);
   });
 
+  it('links every test to the stories of a helper that other helpers share', () => {
+    const analysis = analyzeSpecFile(
+      example('LoginForm/shared-helper.spec.tsx'),
+      `
+      import * as stories from './LoginForm.stories';
+      const { Default } = composeStories(stories);
+      const setup = () => render(<Default />);
+      const login = async () => { setup(); };
+      const logout = async () => { setup(); };
+      const recursive = (depth: number) => (depth > 0 ? recursive(depth - 1) : setup());
+      it('logs in and out', async () => { await login(); await logout(); });
+      it('logs out', async () => { await logout(); });
+      it('recurses', () => { recursive(2); });
+      `,
+    );
+    expect(summarize(analysis)).toEqual([
+      { name: 'logs in and out', stories: ['LoginForm.stories.tsx#Default'] },
+      { name: 'logs out', stories: ['LoginForm.stories.tsx#Default'] },
+      { name: 'recurses', stories: ['LoginForm.stories.tsx#Default'] },
+    ]);
+  });
+
   it('understands hooks, describe.each and names that are not literals', () => {
     const analysis = analyzeSpecFile(
       '/tmp/x.spec.tsx',

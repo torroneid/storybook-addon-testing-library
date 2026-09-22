@@ -198,12 +198,20 @@ export const analyzeSpecFile = (specFile: string, kjeldekode = fs.readFileSync(s
 
   const referenceCache = new Map<ts.Node, StoryReference[]>();
 
-  const findStoryReferences = (root: ts.Node, visited = new Set<ts.Node>()): StoryReference[] => {
+  /**
+   * `inProgress` holds the declarations on the current path, so recursive helpers do not loop forever.
+   * A result that skipped one of them is missing its references, so it is not cached.
+   */
+  const collectStoryReferences = (
+    root: ts.Node,
+    inProgress: Set<ts.Node>,
+  ): { references: StoryReference[]; complete: boolean } => {
     const cache = referenceCache.get(root);
     if (cache) {
-      return cache;
+      return { references: cache, complete: true };
     }
-    visited.add(root);
+    inProgress.add(root);
+    let complete = true;
     const referansar: StoryReference[] = [];
     const visit = (node: ts.Node) => {
       if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) {
@@ -219,16 +227,25 @@ export const analyzeSpecFile = (specFile: string, kjeldekode = fs.readFileSync(s
           addUnique(referansar, [composed]);
         }
         const declaration = topLevelDeclarations.get(node.text);
-        if (declaration && !visited.has(declaration)) {
-          addUnique(referansar, findStoryReferences(declaration, visited));
+        if (declaration && inProgress.has(declaration)) {
+          complete = false;
+        } else if (declaration) {
+          const nested = collectStoryReferences(declaration, inProgress);
+          addUnique(referansar, nested.references);
+          complete &&= nested.complete;
         }
       }
       ts.forEachChild(node, visit);
     };
     ts.forEachChild(root, visit);
-    referenceCache.set(root, referansar);
-    return referansar;
+    inProgress.delete(root);
+    if (complete) {
+      referenceCache.set(root, referansar);
+    }
+    return { references: referansar, complete };
   };
+
+  const findStoryReferences = (root: ts.Node) => collectStoryReferences(root, new Set()).references;
 
   const tests: AnalyzedTest[] = [];
 
