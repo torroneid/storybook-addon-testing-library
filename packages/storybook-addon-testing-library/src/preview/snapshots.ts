@@ -1,6 +1,7 @@
 /**
  * DOM snapshots for every step, taken with rrweb-snapshot (the library Vitest's trace view uses).
  * They show what the canvas looked like at an earlier step without re-running the test.
+ * A new snapshot is only taken when the DOM has changed since the last one.
  */
 import { createCache, createMirror, type Mirror, rebuildIntoSandboxedIframe, snapshot } from 'rrweb-snapshot';
 
@@ -18,48 +19,108 @@ type Snapshot = {
 
 const MAX_SNAPSHOTS = 400;
 const MEMORY_BUDGET = 64 * 1024 * 1024;
+/** Measuring a snapshot costs about as much as taking it, so a test's size estimate is refreshed only this often */
+const MEASURE_EVERY = 10;
 const snapshots = new Map<string, Snapshot>();
-/** Size is measured once per test and reused for its other steps, since measuring costs time */
-const sizeEstimates = new Map<string, number>();
+const sizeEstimates = new Map<string, { bytes: number; age: number }>();
+/** Steps that did not change the DOM share one snapshot, which is counted once */
+const references = new Map<DomSnapshot, number>();
 let usedMemory = 0;
 
 const forget = (key: string) => {
-  usedMemory -= snapshots.get(key)?.bytes ?? 0;
+  const stored = snapshots.get(key);
   snapshots.delete(key);
+  if (stored) {
+    const count = (references.get(stored.node) ?? 1) - 1;
+    if (count > 0) {
+      references.set(stored.node, count);
+    } else {
+      references.delete(stored.node);
+      usedMemory -= stored.bytes;
+    }
+  }
 };
 
 const snapshotKey = (testKey: string, number: number) => `${testKey}#${number}`;
 
 export const hasSnapshot = (testKey: string, number: number) => snapshots.has(snapshotKey(testKey, number));
 
+// ---------- Changes since the last snapshot ----------
+
+let last: { node: DomSnapshot; mirror: Mirror; bytes: number } | undefined;
+let changed = true;
+let observer: MutationObserver | undefined;
+
+const markChanged = () => {
+  changed = true;
+};
+
+const startWatching = () => {
+  if (observer) {
+    return;
+  }
+  observer = new MutationObserver(markChanged);
+  observer.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+  // Typing changes the value property, which is not a mutation
+  document.addEventListener('input', markChanged, true);
+  document.addEventListener('change', markChanged, true);
+};
+
+const hasChanged = () => {
+  // The observer reports in a microtask, so a change made in the same task is still queued
+  if (observer && observer.takeRecords().length > 0) {
+    changed = true;
+  }
+  return changed;
+};
+
+const measure = (testKey: string, node: DomSnapshot) => {
+  const estimate = sizeEstimates.get(testKey);
+  if (estimate && estimate.age < MEASURE_EVERY) {
+    estimate.age++;
+    return estimate.bytes;
+  }
+  const bytes = JSON.stringify(node).length;
+  sizeEstimates.set(testKey, { bytes, age: 1 });
+  return bytes;
+};
+
 export const takeSnapshot = (testKey: string, number: number, element: Element | undefined) => {
   try {
-    const mirror = createMirror();
-    const node = snapshot(document, {
-      mirror,
-      blockSelector: `[${SNAPSHOT_ATTRIBUTE}]`,
-      inlineStylesheet: true,
-      // Scripts never run during playback, and their content would only show up as noise
-      slimDOM: { script: true, comment: true },
-      // Test data is shown as it is, including password fields (an empty object means no masking)
-      maskAllInputs: {},
-    });
-    if (!node) {
-      return false;
+    startWatching();
+    if (!last || hasChanged()) {
+      const mirror = createMirror();
+      const node = snapshot(document, {
+        mirror,
+        blockSelector: `[${SNAPSHOT_ATTRIBUTE}]`,
+        inlineStylesheet: true,
+        // Scripts never run during playback, and their content would only show up as noise
+        slimDOM: { script: true, comment: true },
+        // Test data is shown as it is, including password fields (an empty object means no masking)
+        maskAllInputs: {},
+      });
+      // rrweb adds and removes a node in <body> while it works; those are not changes to the page
+      observer?.takeRecords();
+      if (!node) {
+        return false;
+      }
+      last = { node, mirror, bytes: measure(testKey, node) };
+      changed = false;
     }
-    const elementId = element ? mirror.getId(element) : undefined;
-    let bytes = sizeEstimates.get(testKey);
-    if (bytes === undefined) {
-      bytes = JSON.stringify(node).length;
-      sizeEstimates.set(testKey, bytes);
-    }
-    snapshots.set(snapshotKey(testKey, number), {
-      node,
-      bytes,
+    const elementId = element ? last.mirror.getId(element) : undefined;
+    const key = snapshotKey(testKey, number);
+    forget(key);
+    snapshots.set(key, {
+      node: last.node,
+      bytes: last.bytes,
       elementId: elementId && elementId > 0 ? elementId : undefined,
       scroll: { x: window.scrollX, y: window.scrollY },
     });
-    usedMemory += bytes;
+    const count = references.get(last.node) ?? 0;
+    references.set(last.node, count + 1);
+    if (count === 0) {
+      usedMemory += last.bytes;
+    }
     while (snapshots.size > MAX_SNAPSHOTS || (usedMemory > MEMORY_BUDGET && snapshots.size > 1)) {
       forget(snapshots.keys().next().value!);
     }
