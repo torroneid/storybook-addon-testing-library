@@ -31,9 +31,39 @@ export const createStoryLookup = (index: StoryIndexLike, workingDir: string) => 
 
 export type StoryLookup = ReturnType<typeof createStoryLookup>;
 
-export const findPackageRoot = (file: string, stopp: string) => {
+const isInside = (dir: string, root: string) => {
+  const relative = path.relative(root, dir);
+  return !relative.startsWith('..') && !path.isAbsolute(relative);
+};
+
+const searchRoots = new Map<string, string>();
+
+/**
+ * How far up to look for a package root: the repository Storybook runs in, so stories from sibling packages in a
+ * monorepo are found. Without a repository, only the working directory.
+ */
+const findSearchRoot = (workingDir: string) => {
+  let root = searchRoots.get(workingDir);
+  if (root === undefined) {
+    root = workingDir;
+    for (let dir = workingDir; ; dir = path.dirname(dir)) {
+      if (fs.existsSync(path.join(dir, '.git'))) {
+        root = dir;
+        break;
+      }
+      if (path.dirname(dir) === dir) {
+        break;
+      }
+    }
+    searchRoots.set(workingDir, root);
+  }
+  return root;
+};
+
+export const findPackageRoot = (file: string, workingDir: string) => {
+  const searchRoot = findSearchRoot(workingDir);
   let dir = path.dirname(file);
-  while (dir.startsWith(stopp)) {
+  while (isInside(dir, searchRoot)) {
     if (VITE_CONFIG_FILES.some(configFil => fs.existsSync(path.join(dir, configFil)))) {
       return dir;
     }
