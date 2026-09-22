@@ -1,4 +1,4 @@
-// jest-dom og @vitest/expect fargelegg meldingane for terminalen
+// jest-dom and @vitest/expect color their messages for the terminal
 export const stripAnsi = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, '');
 
 export const display = (value: unknown): string => {

@@ -13,15 +13,15 @@ const wrapStory = <T>(story: T, name: string): T => {
     return story;
   }
   const composed = story as unknown as AnyFunction & Record<string, unknown>;
-  const omslag = function (this: unknown, ...args: unknown[]) {
+  const wrapper = function (this: unknown, ...args: unknown[]) {
     return composed.apply(this, args);
   } as AnyFunction & Record<string, unknown>;
-  Object.assign(omslag, composed);
-  Object.defineProperty(omslag, 'name', { value: composed.name });
+  Object.assign(wrapper, composed);
+  Object.defineProperty(wrapper, 'name', { value: composed.name });
   for (const method of ['run', 'play'] as const) {
     const fn = composed[method];
     if (typeof fn === 'function') {
-      omslag[method] = (...args: unknown[]) =>
+      wrapper[method] = (...args: unknown[]) =>
         pausableStep(
           () => `${name}.${method}()`,
           undefined,
@@ -29,7 +29,7 @@ const wrapStory = <T>(story: T, name: string): T => {
         );
     }
   }
-  return omslag as T;
+  return wrapper as T;
 };
 
 export * from '@storybook/react-vite';

@@ -60,13 +60,13 @@ export type ResultState = {
   results: Record<string, TestResult>;
   fileErrors: Record<string, ErrorInfo[]>;
   run?: { runId: number; selection: RunSelection; started: boolean; currentTest?: TestStarted; completed: number };
-  lastRun?: RunFinished & { ferdigTid: number };
+  lastRun?: RunFinished & { finishedAt: number };
   /** The canvas shows what the tests rendered instead of the story */
   testView?: { storyId?: string; lastTest?: RunFinished['lastTest'] };
   /** The steps (interactions and assertions) from the latest run of each test */
   steps: Record<string, StepInfo[]>;
   stepByStep?: { selection: SingleTestSelection; key?: string };
-  /** The canvas is showing a DOM snapshot from an earlier steps instead of the live DOM */
+  /** The canvas is showing a DOM snapshot from an earlier step instead of the live DOM */
   snapshot?: { key: string; number: number };
 };
 
@@ -118,7 +118,7 @@ export const summarize = (result: TestResult[]) => ({
   skipped: result.filter(r => r.status === 'skipped').length,
 });
 
-// ---------- Statusar i sidemenyen ----------
+// ---------- Statuses in the sidebar ----------
 
 const statusStore = experimental_getStatusStore(STATUS_TYPE_ID);
 
@@ -131,11 +131,11 @@ const toStatusValue = (result: TestResult[], hasFileError: boolean): StatusValue
 
 const updateStatuses = (storyIds: Iterable<string>) => {
   const specFiles = indexStore.getState().specFiles;
-  const alleResultat = Object.values(state.results);
-  const statusar: Status[] = [];
+  const allResults = Object.values(state.results);
+  const statuses: Status[] = [];
   const withoutResults: string[] = [];
   for (const storyId of new Set(storyIds)) {
-    const result = alleResultat.filter(r => r.storyIds.includes(storyId));
+    const result = allResults.filter(r => r.storyIds.includes(storyId));
     const hasFileError = specFiles.some(
       f => f.storyIds.includes(storyId) && (state.fileErrors[f.file]?.length ?? 0) > 0,
     );
@@ -144,7 +144,7 @@ const updateStatuses = (storyIds: Iterable<string>) => {
       continue;
     }
     const { ok, failed } = summarize(result);
-    statusar.push({
+    statuses.push({
       storyId,
       typeId: STATUS_TYPE_ID,
       value: toStatusValue(result, hasFileError),
@@ -156,12 +156,12 @@ const updateStatuses = (storyIds: Iterable<string>) => {
   if (withoutResults.length > 0) {
     statusStore.unset(withoutResults);
   }
-  if (statusar.length > 0) {
-    statusStore.set(statusar);
+  if (statuses.length > 0) {
+    statusStore.set(statuses);
   }
 };
 
-// ---------- Kommunikasjon med preview ----------
+// ---------- Communication with the preview ----------
 
 let api: API | undefined;
 let lastRunId = 0;
@@ -171,20 +171,20 @@ export const runTests = (selection: RunSelection, stepByStep?: { stopAtStep?: nu
     return;
   }
   const specFiles = indexStore.getState().specFiles;
-  const iUtval = testsInSelection(specFiles, selection);
+  const selected = testsInSelection(specFiles, selection);
   // Time based, so the id keeps increasing even if the manager reloads while the preview lives on
   const runId = Math.max(Date.now(), lastRunId + 1);
   lastRunId = runId;
   const selectedTestIds = new Set(
-    iUtval.flatMap(({ specFile, tests }) => tests.map(test => `${specFile.file}|${test.id}`)),
+    selected.flatMap(({ specFile, tests }) => tests.map(test => `${specFile.file}|${test.id}`)),
   );
   const shouldRemove = (result: TestResult) =>
     selection.type === 'all' ||
     (selection.type === 'file'
       ? result.file === selection.file
       : selectedTestIds.has(`${result.file}|${result.staticTestId}`));
-  const filesInSelection = new Set(iUtval.map(({ specFile }) => specFile.file));
-  const affectedStoryIds = iUtval.flatMap(({ specFile, tests }) =>
+  const filesInSelection = new Set(selected.map(({ specFile }) => specFile.file));
+  const affectedStoryIds = selected.flatMap(({ specFile, tests }) =>
     selection.type === 'file' || selection.type === 'all' ? specFile.storyIds : tests.flatMap(test => test.storyIds),
   );
 
@@ -210,7 +210,7 @@ export const runTests = (selection: RunSelection, stepByStep?: { stopAtStep?: nu
   const request: RunRequest = {
     runId,
     storyId: storyData?.type === 'story' ? storyData.id : undefined,
-    files: iUtval.map(({ specFile, tests }) => ({
+    files: selected.map(({ specFile, tests }) => ({
       file: specFile.file,
       importPath: specFile.importPath,
       tests: specFile.tests.map(({ id, name }) => ({ id, name })),
@@ -253,13 +253,13 @@ export const cancel = () => {
 
 export const showStoryAgain = () => api?.emit(EXIT_TEST_VIEW);
 
-// ---------- Step by steps ----------
+// ---------- Step by step ----------
 
 let pendingRestart: { selection: SingleTestSelection; stopAtStep: number } | undefined;
 
 export const runStepByStep = (selection: SingleTestSelection, stopAtStep = 1) => {
   if (state.run) {
-    // A running test cannot be rewound, so it is re-run and paused at that steps
+    // A running test cannot be rewound, so it is re-run and paused at that step
     pendingRestart = { selection, stopAtStep };
     api?.emit(CANCEL);
   } else {
@@ -271,7 +271,7 @@ export const showSnapshot = (key: string, number: number) => api?.emit(SHOW_SNAP
 
 export const hideSnapshot = () => api?.emit(SHOW_SNAPSHOT, { key: '', number: undefined });
 
-/** One steps forward: move through the snapshots, and run the steps once we are back at the live DOM */
+/** One step forward: move through the snapshots, and run the steps once we are back at the live DOM */
 export const nextStep = () => {
   const { snapshot, steps, stepByStep } = state;
   const key = stepByStep?.key;
@@ -288,7 +288,7 @@ export const nextStep = () => {
   api?.emit(STEP_NEXT);
 };
 
-/** One steps back: show the snapshot from the previous step, without re-running the test */
+/** One step back: show the snapshot from the previous step, without re-running the test */
 export const previousStep = () => {
   const { snapshot, steps, stepByStep } = state;
   const key = snapshot?.key ?? stepByStep?.key;
@@ -386,7 +386,7 @@ export const connectToPreview = (managerApi: API) => {
     setState(s => ({
       ...s,
       run: undefined,
-      lastRun: { ...finished, ferdigTid: Date.now() },
+      lastRun: { ...finished, finishedAt: Date.now() },
       testView: s.testView && { ...s.testView, lastTest: finished.lastTest },
     }));
     updateStatuses(affectedStoryIds);

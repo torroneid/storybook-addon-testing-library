@@ -14,7 +14,7 @@ const Container = styled.div(({ theme }) => ({
   color: theme.color.defaultText,
 }));
 
-const Tittel = styled.div(({ theme }) => ({
+const Title = styled.div(({ theme }) => ({
   fontWeight: theme.typography.weight.bold,
   fontSize: theme.typography.size.s2,
 }));
@@ -35,9 +35,9 @@ const timeAgo = (time: number) => {
 export const TestProviderWidget = ({ api }: { api: API }) => {
   const state = useResults();
   const specFiles = useSpecFiles();
-  const [, setTikk] = useState(0);
+  const [, setTick] = useState(0);
   useEffect(() => {
-    const interval = setInterval(() => setTikk(t => t + 1), 30_000);
+    const interval = setInterval(() => setTick(t => t + 1), 30_000);
     return () => clearInterval(interval);
   }, []);
 
@@ -55,7 +55,7 @@ export const TestProviderWidget = ({ api }: { api: API }) => {
           `${summary.ok} ok`,
           `${summary.failed} failed`,
           fileErrorCount > 0 && `${fileErrorCount} files with errors`,
-          state.lastRun && timeAgo(state.lastRun.ferdigTid),
+          state.lastRun && timeAgo(state.lastRun.finishedAt),
         ]
           .filter(Boolean)
           .join(' · ');
@@ -67,7 +67,7 @@ export const TestProviderWidget = ({ api }: { api: API }) => {
         status={summary.failed > 0 || fileErrorCount > 0 ? 'failed' : summary.ok > 0 ? 'passed' : undefined}
       />
       <div style={{ flex: 1 }}>
-        <Tittel>Spec-tests</Tittel>
+        <Title>Spec-tests</Title>
         <Muted>{statusText}</Muted>
       </div>
       {firstFailed && !state.run && (

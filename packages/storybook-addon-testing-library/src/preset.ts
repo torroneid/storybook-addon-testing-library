@@ -31,19 +31,19 @@ const WRAPPERS: Record<string, string> = {
 };
 
 const wrapperPlugin = (specPatterns: string[]): Plugin => ({
-  name: 'spec-tests:omslag',
+  name: 'storybook-addon-testing-library:wrappers',
   enforce: 'pre',
   resolveId: (source, importer) => {
-    const omslag = WRAPPERS[source];
+    const wrapper = WRAPPERS[source];
     const file = importer?.split('?')[0];
-    return omslag && file && isSpecFile(file, specPatterns, process.cwd()) ? omslag : undefined;
+    return wrapper && file && isSpecFile(file, specPatterns, process.cwd()) ? wrapper : undefined;
   },
 });
 
 const setupPlugin = (setupFiles: string[]): Plugin => {
   const resolvedId = `\0${VIRTUAL_SETUP_MODULE}`;
   return {
-    name: 'spec-tests:setup',
+    name: 'storybook-addon-testing-library:setup',
     resolveId: id => (id === VIRTUAL_SETUP_MODULE ? resolvedId : undefined),
     load: id =>
       id === resolvedId

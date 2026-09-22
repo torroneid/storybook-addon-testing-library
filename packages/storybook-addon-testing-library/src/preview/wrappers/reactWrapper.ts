@@ -14,8 +14,8 @@ const componentName = (ui: unknown) => {
     return type;
   }
   if (typeof type === 'function') {
-    const komponent = type as { storyName?: string; displayName?: string; name: string };
-    return komponent.storyName ?? komponent.displayName ?? (komponent.name || 'Komponent');
+    const component = type as { storyName?: string; displayName?: string; name: string };
+    return component.storyName ?? component.displayName ?? (component.name || 'Component');
   }
   return '…';
 };

@@ -142,11 +142,11 @@ const StepRow = styled.div<{ paused: boolean; clickable: boolean }>(({ theme, pa
   '&:hover': clickable ? { background: theme.background.hoverable } : {},
 }));
 
-const Code = styled.code<{ dempa: boolean }>(({ theme, dempa }) => ({
+const Code = styled.code<{ muted: boolean }>(({ theme, muted }) => ({
   flex: 1,
   fontFamily: theme.typography.fonts.mono,
   fontSize: theme.typography.size.s1,
-  color: dempa ? theme.textMutedColor : theme.color.defaultText,
+  color: muted ? theme.textMutedColor : theme.color.defaultText,
   wordBreak: 'break-word',
 }));
 
@@ -182,7 +182,7 @@ const StepList = ({ steps }: { steps: StepInfo[] }) => {
             <span style={{ minWidth: 14 }}>
               <StepIcon status={s.status} />
             </span>
-            <Code dempa={!s.pausable}>
+            <Code muted={!s.pausable}>
               {s.label}
               {s.error && <span style={{ display: 'block', color: '#FF4400' }}>{s.error.split('\n')[0]}</span>}
             </Code>
@@ -231,11 +231,11 @@ const TestRow = ({ specFile, test, result }: { specFile: SpecFile; test: StaticT
   const waiting = isTestPending(state, specFile, test, result);
   const isRunning = !!state.run;
   const [open, setOpen] = useState(false);
-  const koyrKnapp = <TestButtons specFile={specFile} test={test} disabled={isRunning} />;
+  const runButtons = <TestButtons specFile={specFile} test={test} disabled={isRunning} />;
 
-  // Éin test i kjeldekoden gir eitt result, med mindre han er laga med .each
+  // A test in the source gives one result, unless it is declared with .each/.for
   if (result.length === 1 && !test.isTemplate && !waiting) {
-    return <TestResultRow result={result[0]!} onlyLastName={false} handling={koyrKnapp} />;
+    return <TestResultRow result={result[0]!} onlyLastName={false} handling={runButtons} />;
   }
 
   const summary = summarize(result);
@@ -250,7 +250,7 @@ const TestRow = ({ specFile, test, result }: { specFile: SpecFile; test: StaticT
             {summary.ok}/{result.length} ok
           </Muted>
         )}
-        {koyrKnapp}
+        {runButtons}
         {result.length > 0 && <Muted>{open ? '▾' : '▸'}</Muted>}
       </Row>
       {(open || summary.failed > 0) && result.map(r => <TestResultRow key={r.key} result={r} onlyLastName />)}
@@ -260,7 +260,7 @@ const TestRow = ({ specFile, test, result }: { specFile: SpecFile; test: StaticT
 
 const SpecFileView = ({ specFile, storyId }: { specFile: SpecFile; storyId: string }) => {
   const state = useResults();
-  const [showOther, setVisAndre] = useState<boolean>();
+  const [showOther, setShowOther] = useState<boolean>();
   const resultsInFile = Object.values(state.results).filter(r => r.file === specFile.file);
   const resultsForTest = (test: StaticTest) => resultsInFile.filter(r => r.staticTestId === test.id);
   const linked = specFile.tests.filter(test => test.storyIds.includes(storyId));
@@ -301,7 +301,7 @@ const SpecFileView = ({ specFile, storyId }: { specFile: SpecFile; storyId: stri
       )}
       {other.length > 0 && (
         <>
-          <SectionTitle onClick={() => setVisAndre(!otherOpen)}>
+          <SectionTitle onClick={() => setShowOther(!otherOpen)}>
             {otherOpen ? '▾' : '▸'} Other tests in this file ({other.length})
             {otherResults.ok + otherResults.failed > 0 &&
               ` · ${otherResults.ok} passed · ${otherResults.failed} failed`}
@@ -349,13 +349,13 @@ const TestViewBanner = () => {
 const StepPanel = () => {
   const state = useResults();
   const specFiles = useSpecFiles();
-  const sesjon = state.stepByStep;
-  if (!sesjon) {
+  const session = state.stepByStep;
+  if (!session) {
     return null;
   }
-  const { selection } = sesjon;
-  const steps = sesjon.key ? (state.steps[sesjon.key] ?? []) : [];
-  const result = sesjon.key ? state.results[sesjon.key] : undefined;
+  const { selection } = session;
+  const steps = session.key ? (state.steps[session.key] ?? []) : [];
+  const result = session.key ? state.results[session.key] : undefined;
   const paused = state.run ? steps.find(s => s.status === 'paused') : undefined;
   const test = specFiles.find(f => f.file === selection.file)?.tests.find(t => t.id === selection.testId);
   const snapshot = state.snapshot;
@@ -373,7 +373,7 @@ const StepPanel = () => {
           ? 'Test finished ✓'
           : result?.status === 'failed'
             ? 'Test failed'
-            : 'Avbroten';
+            : 'Cancelled';
 
   return (
     <Details style={{ paddingLeft: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -389,7 +389,7 @@ const StepPanel = () => {
           ◀ Previous
         </Button>
         <Button
-          primar
+          primary
           title={snapshot ? 'Show the next step' : 'Run this step and pause at the next one'}
           disabled={!paused}
           onClick={nextStep}
@@ -450,7 +450,7 @@ export const Panel = () => {
     <Container>
       <Toolbar>
         <Button
-          primar
+          primary
           disabled={!!state.run || testsForStory.length === 0}
           onClick={() => runTests({ type: 'stories', storyIds: [storyId] })}
         >

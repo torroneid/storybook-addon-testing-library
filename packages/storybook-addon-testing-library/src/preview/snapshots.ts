@@ -28,11 +28,11 @@ const forget = (key: string) => {
   snapshots.delete(key);
 };
 
-const snapshotKey = (testNokkel: string, number: number) => `${testNokkel}#${number}`;
+const snapshotKey = (testKey: string, number: number) => `${testKey}#${number}`;
 
-export const hasSnapshot = (testNokkel: string, number: number) => snapshots.has(snapshotKey(testNokkel, number));
+export const hasSnapshot = (testKey: string, number: number) => snapshots.has(snapshotKey(testKey, number));
 
-export const takeSnapshot = (testNokkel: string, number: number, element: Element | undefined) => {
+export const takeSnapshot = (testKey: string, number: number, element: Element | undefined) => {
   try {
     const mirror = createMirror();
     const node = snapshot(document, {
@@ -48,12 +48,12 @@ export const takeSnapshot = (testNokkel: string, number: number, element: Elemen
       return false;
     }
     const elementId = element ? mirror.getId(element) : undefined;
-    let bytes = sizeEstimates.get(testNokkel);
+    let bytes = sizeEstimates.get(testKey);
     if (bytes === undefined) {
       bytes = JSON.stringify(node).length;
-      sizeEstimates.set(testNokkel, bytes);
+      sizeEstimates.set(testKey, bytes);
     }
-    snapshots.set(snapshotKey(testNokkel, number), {
+    snapshots.set(snapshotKey(testKey, number), {
       node,
       bytes,
       elementId: elementId && elementId > 0 ? elementId : undefined,
@@ -70,16 +70,16 @@ export const takeSnapshot = (testNokkel: string, number: number, element: Elemen
   }
 };
 
-export const forgetSnapshotsFor = (testNokkel: string) => {
-  sizeEstimates.delete(testNokkel);
+export const forgetSnapshotsFor = (testKey: string) => {
+  sizeEstimates.delete(testKey);
   for (const key of snapshots.keys()) {
-    if (key.startsWith(`${testNokkel}#`)) {
+    if (key.startsWith(`${testKey}#`)) {
       forget(key);
     }
   }
 };
 
-// ---------- Avspeling ----------
+// ---------- Playback ----------
 
 let frame: HTMLIFrameElement | undefined;
 
@@ -103,8 +103,8 @@ const highlightElement = (doc: Document, mirror: Mirror, elementId: number | und
   }
 };
 
-export const showSnapshot = (testNokkel: string, number: number) => {
-  const stored = snapshots.get(snapshotKey(testNokkel, number));
+export const showSnapshot = (testKey: string, number: number) => {
+  const stored = snapshots.get(snapshotKey(testKey, number));
   if (!stored) {
     return false;
   }

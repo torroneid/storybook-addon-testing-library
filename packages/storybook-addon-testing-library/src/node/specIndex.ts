@@ -13,19 +13,19 @@ const VITE_CONFIG_FILES = ['vitest.config', 'vite.config'].flatMap(name =>
 );
 
 export const createStoryLookup = (index: StoryIndexLike, workingDir: string) => {
-  const perFil = new Map<string, Map<string, string>>();
+  const byFile = new Map<string, Map<string, string>>();
   for (const entry of Object.values(index.entries)) {
     if (entry.type !== 'story' || !entry.exportName) {
       continue;
     }
     const file = path.resolve(workingDir, entry.importPath);
-    const stories = perFil.get(file) ?? new Map<string, string>();
+    const stories = byFile.get(file) ?? new Map<string, string>();
     stories.set(entry.exportName, entry.id);
-    perFil.set(file, stories);
+    byFile.set(file, stories);
   }
   return {
-    findStoryId: (storiesFile: string, exportName: string) => perFil.get(storiesFile)?.get(exportName),
-    findStoryIdsInFile: (storiesFile: string) => [...(perFil.get(storiesFile)?.values() ?? [])],
+    findStoryId: (storiesFile: string, exportName: string) => byFile.get(storiesFile)?.get(exportName),
+    findStoryIdsInFile: (storiesFile: string) => [...(byFile.get(storiesFile)?.values() ?? [])],
   };
 };
 
@@ -64,7 +64,7 @@ export const findPackageRoot = (file: string, workingDir: string) => {
   const searchRoot = findSearchRoot(workingDir);
   let dir = path.dirname(file);
   while (isInside(dir, searchRoot)) {
-    if (VITE_CONFIG_FILES.some(configFil => fs.existsSync(path.join(dir, configFil)))) {
+    if (VITE_CONFIG_FILES.some(configFile => fs.existsSync(path.join(dir, configFile)))) {
       return dir;
     }
     const parent = path.dirname(dir);
@@ -102,11 +102,11 @@ export const analyzeAndLinkSpecFile = (
   const file = toRelativePath(absoluteFile, workingDir);
   const importPath = `/@fs${absoluteFile.split(path.sep).join('/')}`;
   try {
-    const analyse = analyzeSpecFile(absoluteFile);
-    const storiesFiles = new Set(analyse.storiesFiles);
-    const storiesFilMedSameNamn = findSiblingStoriesFile(absoluteFile);
-    if (storiesFilMedSameNamn) {
-      storiesFiles.add(storiesFilMedSameNamn);
+    const analysis = analyzeSpecFile(absoluteFile);
+    const storiesFiles = new Set(analysis.storiesFiles);
+    const siblingStoriesFile = findSiblingStoriesFile(absoluteFile);
+    if (siblingStoriesFile) {
+      storiesFiles.add(siblingStoriesFile);
     }
     const storyIds = [...storiesFiles].flatMap(storyLookup.findStoryIdsInFile);
     if (storyIds.length === 0) {
@@ -116,7 +116,7 @@ export const analyzeAndLinkSpecFile = (
       file,
       importPath,
       storyIds,
-      tests: analyse.tests.map(test => ({
+      tests: analysis.tests.map(test => ({
         id: `${test.line}:${test.name.map(part => part.text).join(' > ')}`,
         name: test.name,
         line: test.line,
@@ -135,10 +135,10 @@ export const analyzeAndLinkSpecFile = (
   }
 };
 
-export const findSpecFiles = (katalogar: string[], pattern: string[]) =>
+export const findSpecFiles = (dirs: string[], pattern: string[]) =>
   [
     ...new Set(
-      katalogar
+      dirs
         .filter(dir => fs.existsSync(dir))
         .flatMap(dir =>
           fs

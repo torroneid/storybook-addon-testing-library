@@ -3,17 +3,17 @@ import { keyframes, styled } from 'storybook/theming';
 
 import type { ErrorInfo, TestStatus } from '../shared/types.ts';
 
-const snurr = keyframes({ from: { transform: 'rotate(0deg)' }, to: { transform: 'rotate(360deg)' } });
+const spin = keyframes({ from: { transform: 'rotate(0deg)' }, to: { transform: 'rotate(360deg)' } });
 
-export const Button = styled.button<{ primar?: boolean }>(({ theme, primar }) => ({
+export const Button = styled.button<{ primary?: boolean }>(({ theme, primary }) => ({
   display: 'inline-flex',
   alignItems: 'center',
   gap: 4,
   padding: '3px 8px',
   borderRadius: 4,
-  border: `1px solid ${primar ? theme.color.secondary : theme.appBorderColor}`,
-  background: primar ? theme.color.secondary : 'transparent',
-  color: primar ? theme.color.lightest : theme.color.defaultText,
+  border: `1px solid ${primary ? theme.color.secondary : theme.appBorderColor}`,
+  background: primary ? theme.color.secondary : 'transparent',
+  color: primary ? theme.color.lightest : theme.color.defaultText,
   fontSize: theme.typography.size.s1,
   fontWeight: theme.typography.weight.bold,
   cursor: 'pointer',
@@ -42,7 +42,7 @@ export const Spinner = styled.span(({ theme }) => ({
   borderRadius: '50%',
   border: `2px solid ${theme.appBorderColor}`,
   borderTopColor: theme.color.secondary,
-  animation: `${snurr} 0.8s linear infinite`,
+  animation: `${spin} 0.8s linear infinite`,
 }));
 
 const Dot = styled.span<{ color: string }>(({ color }) => ({

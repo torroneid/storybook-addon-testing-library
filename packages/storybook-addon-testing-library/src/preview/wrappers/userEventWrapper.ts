@@ -11,13 +11,13 @@ type AnyFunction = (...args: unknown[]) => unknown;
 const isElement = (value: unknown): value is Element => typeof Element !== 'undefined' && value instanceof Element;
 
 const wrap = <T extends object>(api: T, prefix: string): T => {
-  const omslag: Record<string, unknown> = { ...(api as Record<string, unknown>) };
+  const wrapper: Record<string, unknown> = { ...(api as Record<string, unknown>) };
   for (const [name, value] of Object.entries(api)) {
     if (typeof value !== 'function') {
       continue;
     }
     const fn = value as AnyFunction;
-    omslag[name] =
+    wrapper[name] =
       name === 'setup'
         ? (...args: unknown[]) => wrap(fn.apply(api, args) as object, 'user')
         : (...args: unknown[]) =>
@@ -27,7 +27,7 @@ const wrap = <T extends object>(api: T, prefix: string): T => {
               async () => fn.apply(api, args),
             );
   }
-  return omslag as T;
+  return wrapper as T;
 };
 
 export * from '@testing-library/user-event';

@@ -58,7 +58,7 @@ export type Reporter = {
 };
 
 const DEFAULT_TIMEOUT = 20_000;
-const SKIP = Symbol('hopp-over');
+const SKIP = Symbol('skip');
 
 const createSuite = (name: string, mode: Mode, parent?: Suite): Suite => ({
   type: 'suite',
@@ -77,7 +77,7 @@ const globalSuite = createSuite('', 'run');
 let collector: Suite | undefined;
 const currentSuite = () => collector ?? globalSuite;
 
-// ---------- Registrering ----------
+// ---------- Registration ----------
 
 const toName = (name: unknown) =>
   typeof name === 'function' ? name.name : typeof name === 'string' ? name : String(name);
@@ -101,22 +101,22 @@ const createApi = (register: Register) => {
   const withMode = (mode: Mode) =>
     Object.assign(register(mode), {
       each:
-        (tabell: unknown[]) =>
+        (table: unknown[]) =>
         (...argument: Args) => {
           const { fn, timeout } = splitArgs(argument);
-          tabell.forEach((rad, index) => {
-            const args = Array.isArray(rad) ? rad : [rad];
+          table.forEach((row, index) => {
+            const args = Array.isArray(row) ? row : [row];
             register(mode)(formatName(toName(argument[0]), args, index), fn && (() => fn(...args)), timeout);
           });
         },
       for:
-        (tabell: unknown[]) =>
+        (table: unknown[]) =>
         (...argument: Args) => {
           const { fn, timeout } = splitArgs(argument);
-          tabell.forEach((rad, index) => {
+          table.forEach((row, index) => {
             register(mode)(
-              formatName(toName(argument[0]), Array.isArray(rad) ? rad : [rad], index),
-              fn && ((context: TestContext) => fn(rad, context)),
+              formatName(toName(argument[0]), Array.isArray(row) ? row : [row], index),
+              fn && ((context: TestContext) => fn(row, context)),
               timeout,
             );
           });
@@ -129,8 +129,8 @@ const createApi = (register: Register) => {
     todo: withMode('todo'),
     concurrent: base,
     sequential: base,
-    skipIf: (vilkar: unknown) => (vilkar ? withMode('skip') : base),
-    runIf: (vilkar: unknown) => (vilkar ? base : withMode('skip')),
+    skipIf: (condition: unknown) => (condition ? withMode('skip') : base),
+    runIf: (condition: unknown) => (condition ? base : withMode('skip')),
   });
 };
 
@@ -142,7 +142,7 @@ export const describe = createApi(mode => (name, a, b) => {
   if (!fn) {
     return;
   }
-  const forrige = collector;
+  const previous = collector;
   collector = suite;
   try {
     const result = fn();
@@ -150,7 +150,7 @@ export const describe = createApi(mode => (name, a, b) => {
       throw new Error(`describe('${suite.name}') is async, which is not supported when running specs in Storybook.`);
     }
   } finally {
-    collector = forrige;
+    collector = previous;
   }
 });
 
@@ -225,12 +225,12 @@ export const vitestApi = {
   vitest: vi,
 };
 
-// ---------- Innlasting ----------
+// ---------- Loading ----------
 
-export const loadSetupFiles = async (importerar: Array<() => Promise<unknown>>) => {
+export const loadSetupFiles = async (importers: Array<() => Promise<unknown>>) => {
   collector = globalSuite;
   try {
-    for (const importer of importerar) {
+    for (const importer of importers) {
       await importer();
     }
   } finally {
@@ -257,11 +257,11 @@ export const toErrorInfo = (error: unknown): ErrorInfo => {
     return { message: stripAnsi(display(error)) };
   }
   const { actual, expected, showDiff } = error as Error & { actual?: unknown; expected?: unknown; showDiff?: boolean };
-  const harDiff = showDiff !== false && (actual !== undefined || expected !== undefined) && actual !== expected;
+  const hasDiff = showDiff !== false && (actual !== undefined || expected !== undefined) && actual !== expected;
   return {
     message: stripAnsi(`${error.name && error.name !== 'Error' ? `${error.name}: ` : ''}${error.message}`),
     stack: error.stack && stripAnsi(error.stack),
-    diff: harDiff ? `Forventa: ${display(expected)}\nFekk:     ${display(actual)}` : undefined,
+    diff: hasDiff ? `Expected: ${display(expected)}\nReceived: ${display(actual)}` : undefined,
   };
 };
 
@@ -269,7 +269,7 @@ export const toErrorInfo = (error: unknown): ErrorInfo => {
  * A timeout cannot stop the function, which keeps running after the next test has started, like in Vitest.
  * `onTimeout` aborts the test's signal, so code that listens to it can stop.
  */
-const withTimeout = async (value: unknown, ms: number, kva: string, onTimeout?: (error: Error) => void) => {
+const withTimeout = async (value: unknown, ms: number, label: string, onTimeout?: (error: Error) => void) => {
   // A test paused for the user in step-by-step mode must not time out
   if (!(value instanceof Promise) || stepModeActive()) {
     return value;
@@ -280,7 +280,7 @@ const withTimeout = async (value: unknown, ms: number, kva: string, onTimeout?: 
       value,
       new Promise((_, reject) => {
         timer = setTimeout(() => {
-          const error = new Error(`${kva} brukte meir enn ${ms} ms`);
+          const error = new Error(`${label} took more than ${ms} ms`);
           onTimeout?.(error);
           reject(error);
         }, ms);
@@ -483,7 +483,7 @@ export const runFile = async (root: Suite, run: RunOptions) => {
   await runSuite(root, [], [], false, hasOnly(root), run);
 };
 
-// ---------- DOM i canvas ----------
+// ---------- DOM in the canvas ----------
 
 let nodesBeforeTests: Set<Node> | undefined;
 

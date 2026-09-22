@@ -12,7 +12,7 @@ import { forgetSnapshotsFor, hasSnapshot, hideSnapshot, takeSnapshot } from './s
 export class CancelledError extends Error {
   constructor() {
     super('The run was cancelled');
-    this.name = 'SpecTestarAvbrote';
+    this.name = 'CancelledError';
   }
 }
 
@@ -27,8 +27,8 @@ type Controller = {
   waiting?: { resume: () => void; reject: (error: Error) => void };
 };
 
-const g = globalThis as typeof globalThis & { __SPEC_TESTAR_STEG__?: Controller };
-const control: Controller = (g.__SPEC_TESTAR_STEG__ ??= {
+const g = globalThis as typeof globalThis & { __TESTING_LIBRARY_ADDON_STEPS__?: Controller };
+const control: Controller = (g.__TESTING_LIBRARY_ADDON_STEPS__ ??= {
   active: false,
   stopAtStep: 1,
   runId: 0,
@@ -95,8 +95,8 @@ export const describeValue = (value: unknown): string => {
       (value as HTMLInputElement).labels?.[0]?.textContent ??
       value.getAttribute('placeholder') ??
       value.textContent;
-    const kort = name?.replace(/\s+/g, ' ').trim().slice(0, 40);
-    return kort ? `${tag} «${kort}»` : tag;
+    const short = name?.replace(/\s+/g, ' ').trim().slice(0, 40);
+    return short ? `${tag} "${short}"` : tag;
   }
   if (typeof value === 'string') {
     return JSON.stringify(value.length > 40 ? `${value.slice(0, 40)}…` : value);
@@ -105,9 +105,9 @@ export const describeValue = (value: unknown): string => {
     return value.name ? `${value.name}` : '() => …';
   }
   if (value !== null && typeof value === 'object') {
-    const asymmetrisk = value as { asymmetricMatch?: unknown; toAsymmetricMatcher?: () => string };
-    if (typeof asymmetrisk.asymmetricMatch === 'function') {
-      return asymmetrisk.toAsymmetricMatcher?.() ?? String(value);
+    const asymmetric = value as { asymmetricMatch?: unknown; toAsymmetricMatcher?: () => string };
+    if (typeof asymmetric.asymmetricMatch === 'function') {
+      return asymmetric.toAsymmetricMatcher?.() ?? String(value);
     }
     const text = stripAnsi(display(value));
     return text.length > 40 ? `${text.slice(0, 40)}…` : text;
@@ -160,14 +160,14 @@ export const pausableStep = async <T>(
   if (control.active && number >= control.stopAtStep) {
     send(number, label(), true, 'paused');
     // The highlight is removed before the action, so it cannot affect the test
-    const fjernMarkering = highlight(element);
+    const removeHighlight = highlight(element);
     try {
       await new Promise<void>((resume, reject) => {
         control.waiting = { resume, reject };
       });
     } finally {
       control.waiting = undefined;
-      fjernMarkering();
+      removeHighlight();
     }
   }
   // If the user is looking at an earlier step, bring the canvas back to the live DOM first

@@ -4,7 +4,8 @@
  */
 import type { vitestApi } from './runtime.ts';
 
-const api = (globalThis as unknown as { __SPEC_TESTAR_VITEST__?: typeof vitestApi }).__SPEC_TESTAR_VITEST__;
+const api = (globalThis as unknown as { __TESTING_LIBRARY_ADDON_VITEST__?: typeof vitestApi })
+  .__TESTING_LIBRARY_ADDON_VITEST__;
 
 if (!api) {
   throw new Error("storybook-addon-testing-library: 'vitest' was imported before the test runtime was ready");

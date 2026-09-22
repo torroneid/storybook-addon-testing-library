@@ -43,34 +43,34 @@ export const startSpecIndex = async (options: Options, specPatterns: string[]) =
       ? analyzeAndLinkSpecFile(absoluteFile, workingDir, storyLookup)
       : undefined;
     store.setState(state => {
-      const utan = state.specFiles.filter(specFile => specFile.file !== file);
-      return { specFiles: created ? [...utan, created].sort((a, b) => a.file.localeCompare(b.file)) : utan };
+      const others = state.specFiles.filter(specFile => specFile.file !== file);
+      return { specFiles: created ? [...others, created].sort((a, b) => a.file.localeCompare(b.file)) : others };
     });
   };
 
   const watchSpecFiles = (packageRoots: string[]) => {
     for (const packageRoot of packageRoots.filter(root => !watchers.has(root))) {
-      const ventande = new Map<string, NodeJS.Timeout>();
-      const vaktar = fs.watch(packageRoot, { recursive: true }, (_hending, fileName) => {
+      const pending = new Map<string, NodeJS.Timeout>();
+      const watcher = fs.watch(packageRoot, { recursive: true }, (_event, fileName) => {
         if (!fileName || fileName.includes('node_modules') || !specPatterns.some(m => path.matchesGlob(fileName, m))) {
           return;
         }
         const absoluteFile = path.join(packageRoot, fileName);
-        clearTimeout(ventande.get(absoluteFile));
-        ventande.set(
+        clearTimeout(pending.get(absoluteFile));
+        pending.set(
           absoluteFile,
           setTimeout(() => {
-            ventande.delete(absoluteFile);
+            pending.delete(absoluteFile);
             updateSpecFile(absoluteFile);
           }, 200),
         );
       });
-      vaktar.on('error', error => {
+      watcher.on('error', error => {
         logger.warn(`${ADDON_ID}: stopped watching ${packageRoot} for spec files: ${error}`);
-        vaktar.close();
+        watcher.close();
         watchers.delete(packageRoot);
       });
-      watchers.set(packageRoot, vaktar);
+      watchers.set(packageRoot, watcher);
     }
   };
 

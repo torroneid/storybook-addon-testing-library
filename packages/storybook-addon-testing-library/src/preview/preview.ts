@@ -40,7 +40,7 @@ import { hideSnapshot, showSnapshot } from './snapshots.ts';
 import { cancelStep, resumeWithoutPausing, nextStep, startStepRun } from './steps.ts';
 
 type GlobalWithPreview = typeof globalThis & {
-  __SPEC_TESTAR_VITEST__?: typeof vitestApi;
+  __TESTING_LIBRARY_ADDON_VITEST__?: typeof vitestApi;
   IS_REACT_ACT_ENVIRONMENT?: boolean;
   __STORYBOOK_PREVIEW__?: { onForceRemount?: (args: { storyId: string }) => Promise<void> };
 };
@@ -48,7 +48,7 @@ const g = globalThis as GlobalWithPreview;
 
 // Must be set after @testing-library/react has loaded (through runtime.ts) so that it does not register
 // its automatic cleanup after each test. That keeps the last test's DOM in the canvas.
-g.__SPEC_TESTAR_VITEST__ = vitestApi;
+g.__TESTING_LIBRARY_ADDON_VITEST__ = vitestApi;
 for (const [name, value] of Object.entries(vitestApi)) {
   if (!(name in g)) {
     Object.defineProperty(g, name, { value: value, configurable: true, writable: true });

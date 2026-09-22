@@ -28,28 +28,28 @@ const escapeRegex = (text: string) => text.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&'
 /** Turns an .each name such as 'formats %s as $expected' into a regex pattern */
 const templateToPattern = (text: string) => {
   let pattern = '';
-  let forrige = 0;
-  for (const treff of text.matchAll(/%[sdifjoOc#$%]|\$[A-Za-z_$][\w$]*(?:\.[\w$]+)*/g)) {
-    pattern += escapeRegex(text.slice(forrige, treff.index));
-    pattern += treff[0] === '%%' ? '%' : '.*?';
-    forrige = treff.index + treff[0].length;
+  let last = 0;
+  for (const match of text.matchAll(/%[sdifjoOc#$%]|\$[A-Za-z_$][\w$]*(?:\.[\w$]+)*/g)) {
+    pattern += escapeRegex(text.slice(last, match.index));
+    pattern += match[0] === '%%' ? '%' : '.*?';
+    last = match.index + match[0].length;
   }
-  return pattern + escapeRegex(text.slice(forrige));
+  return pattern + escapeRegex(text.slice(last));
 };
 
 const toNamePart = (node: ts.Expression | undefined, source: ts.SourceFile, isTemplate: boolean): NamePart => {
   if (!node) {
     return { text: '', pattern: '' };
   }
-  const tilMonster = (text: string) => (isTemplate ? templateToPattern(text) : escapeRegex(text));
+  const toPattern = (text: string) => (isTemplate ? templateToPattern(text) : escapeRegex(text));
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-    return { text: node.text, pattern: tilMonster(node.text) };
+    return { text: node.text, pattern: toPattern(node.text) };
   }
   if (ts.isTemplateExpression(node)) {
-    const delar = [node.head.text, ...node.templateSpans.map(span => span.literal.text)];
+    const parts = [node.head.text, ...node.templateSpans.map(span => span.literal.text)];
     return {
       text: node.getText(source).slice(1, -1),
-      pattern: delar.map(tilMonster).join('.*?'),
+      pattern: parts.map(toPattern).join('.*?'),
     };
   }
   return { text: node.getText(source), pattern: null };
@@ -66,31 +66,31 @@ const findStoriesFile = (specFile: string, specifier: string) => {
 };
 
 type Call = {
-  type: 'test' | 'describe' | 'krok';
+  type: 'test' | 'describe' | 'hook';
   isTemplate: boolean;
   argument: readonly ts.Expression[];
 };
 
 /**
- * Kjenner att it('name', fn), it.skip(...), it.each(tabell)('name', fn), describe.each(...)(...) osv.
+ * Recognizes it('name', fn), it.skip(...), it.each(table)('name', fn), describe.each(...)(...) and so on.
  */
 const classifyCall = (call: ts.CallExpression): Call | undefined => {
   let expression: ts.Expression = call.expression;
   let isTemplate = false;
   if (ts.isCallExpression(expression) || ts.isTaggedTemplateExpression(expression)) {
-    const indre = ts.isCallExpression(expression) ? expression.expression : expression.tag;
-    if (!ts.isPropertyAccessExpression(indre) || !TEMPLATE_MODIFIERS.has(indre.name.text)) {
+    const inner = ts.isCallExpression(expression) ? expression.expression : expression.tag;
+    if (!ts.isPropertyAccessExpression(inner) || !TEMPLATE_MODIFIERS.has(inner.name.text)) {
       return undefined;
     }
     isTemplate = true;
-    expression = indre.expression;
+    expression = inner.expression;
   }
   const modifiers: string[] = [];
   while (ts.isPropertyAccessExpression(expression)) {
     modifiers.push(expression.name.text);
     expression = expression.expression;
   }
-  if (!ts.isIdentifier(expression) || modifiers.some(modifikator => TEMPLATE_MODIFIERS.has(modifikator))) {
+  if (!ts.isIdentifier(expression) || modifiers.some(modifier => TEMPLATE_MODIFIERS.has(modifier))) {
     return undefined;
   }
   const name = expression.text;
@@ -99,7 +99,7 @@ const classifyCall = (call: ts.CallExpression): Call | undefined => {
     : DESCRIBE_FUNCTIONS.has(name)
       ? 'describe'
       : HOOKS.has(name)
-        ? 'krok'
+        ? 'hook'
         : undefined;
   return type ? { type, isTemplate, argument: call.arguments } : undefined;
 };
@@ -116,8 +116,8 @@ const addUnique = (list: StoryReference[], added: Iterable<StoryReference>) => {
   return list;
 };
 
-export const analyzeSpecFile = (specFile: string, kjeldekode = fs.readFileSync(specFile, 'utf-8')): SpecAnalysis => {
-  const source = ts.createSourceFile(specFile, kjeldekode, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+export const analyzeSpecFile = (specFile: string, sourceText = fs.readFileSync(specFile, 'utf-8')): SpecAnalysis => {
+  const source = ts.createSourceFile(specFile, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 
   /** import * as stories from './X.stories' */
   const storiesNamespaces = new Map<string, string>();
@@ -186,9 +186,9 @@ export const analyzeSpecFile = (specFile: string, kjeldekode = fs.readFileSync(s
           }
         }
       } else if (fn === 'composeStory' && ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) {
-        const referanse = storyReferenceFromExpression(node.arguments[0]);
-        if (referanse) {
-          composedStories.set(parent.name.text, referanse);
+        const reference = storyReferenceFromExpression(node.arguments[0]);
+        if (reference) {
+          composedStories.set(parent.name.text, reference);
         }
       }
     }
@@ -212,26 +212,26 @@ export const analyzeSpecFile = (specFile: string, kjeldekode = fs.readFileSync(s
     }
     inProgress.add(root);
     let complete = true;
-    const referansar: StoryReference[] = [];
+    const references: StoryReference[] = [];
     const visit = (node: ts.Node) => {
       if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) {
         const collection = composedCollections.get(node.expression.text);
         const namespace = storiesNamespaces.get(node.expression.text);
         const storiesFile = collection ?? namespace;
         if (storiesFile && node.name.text !== 'default') {
-          addUnique(referansar, [{ storiesFile, exportName: node.name.text }]);
+          addUnique(references, [{ storiesFile, exportName: node.name.text }]);
         }
       } else if (ts.isIdentifier(node) && !(ts.isPropertyAccessExpression(node.parent) && node.parent.name === node)) {
         const composed = composedStories.get(node.text);
         if (composed) {
-          addUnique(referansar, [composed]);
+          addUnique(references, [composed]);
         }
         const declaration = topLevelDeclarations.get(node.text);
         if (declaration && inProgress.has(declaration)) {
           complete = false;
         } else if (declaration) {
           const nested = collectStoryReferences(declaration, inProgress);
-          addUnique(referansar, nested.references);
+          addUnique(references, nested.references);
           complete &&= nested.complete;
         }
       }
@@ -240,9 +240,9 @@ export const analyzeSpecFile = (specFile: string, kjeldekode = fs.readFileSync(s
     ts.forEachChild(root, visit);
     inProgress.delete(root);
     if (complete) {
-      referenceCache.set(root, referansar);
+      referenceCache.set(root, references);
     }
-    return { references: referansar, complete };
+    return { references, complete };
   };
 
   const findStoryReferences = (root: ts.Node) => collectStoryReferences(root, new Set()).references;
@@ -255,7 +255,7 @@ export const analyzeSpecFile = (specFile: string, kjeldekode = fs.readFileSync(s
     for (const statement of statements) {
       if (ts.isExpressionStatement(statement) && ts.isCallExpression(statement.expression)) {
         const call = classifyCall(statement.expression);
-        if (call?.type === 'krok') {
+        if (call?.type === 'hook') {
           addUnique(hookReferences, findStoryReferences(statement.expression));
         }
       }
@@ -285,7 +285,7 @@ export const analyzeSpecFile = (specFile: string, kjeldekode = fs.readFileSync(s
           });
           return;
         }
-        if (call?.type === 'krok') {
+        if (call?.type === 'hook') {
           return;
         }
       }
