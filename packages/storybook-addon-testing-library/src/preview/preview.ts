@@ -16,7 +16,7 @@ import {
   RUN,
   RUN_STARTED,
   resultKey,
-  matchesStaticTest,
+  findStaticTest,
   SNAPSHOT_SHOWN,
   STEP_CONTINUE,
   STEP_NEXT,
@@ -124,7 +124,7 @@ const run = async ({ runId, storyId, files, stepByStep }: RunRequest) => {
         runId,
         key: resultKey(file.file, name),
         file: file.file,
-        staticTestId: file.tests.find(test => matchesStaticTest(test, name))?.id,
+        staticTestId: findStaticTest(file.tests, name)?.id,
         name,
       });
       try {

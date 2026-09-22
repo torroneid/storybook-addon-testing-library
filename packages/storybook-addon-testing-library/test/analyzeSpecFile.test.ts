@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { analyzeSpecFile } from '../src/node/analyzeSpecFile.ts';
 import { formatName } from '../src/preview/formatName.ts';
-import { matchesStaticTest } from '../src/shared/types.ts';
+import { findStaticTest, matchesStaticTest } from '../src/shared/types.ts';
 
 const example = (file: string) =>
   path.resolve(fileURLToPath(new URL('.', import.meta.url)), '../../../example/src', file);
@@ -83,6 +83,24 @@ describe('analyzeSpecFile', () => {
         isTemplate: true,
       },
     ]);
+  });
+});
+
+describe('findStaticTest', () => {
+  it('prefers a literal or template name over one that is not a literal', () => {
+    const analysis = analyzeSpecFile(
+      '/tmp/x.spec.tsx',
+      `
+      for (const c of cases) { it(c.name, () => {}); }
+      it.each([])('case %s', () => {});
+      it('specific', () => {});
+      `,
+    );
+    const lineOf = (name: string) => findStaticTest(analysis.tests, [name])?.line;
+
+    expect(lineOf('specific')).toBe(4);
+    expect(lineOf('case 1')).toBe(3);
+    expect(lineOf('anything else')).toBe(2);
   });
 });
 

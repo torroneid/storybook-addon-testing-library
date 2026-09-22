@@ -135,3 +135,26 @@ export const matchesStaticTest = (test: Pick<StaticTest, 'name'>, name: string[]
   test.name.every((part, index) =>
     part.pattern === null ? true : new RegExp(`^${part.pattern}$`, 's').test(name[index] ?? ''),
   );
+
+/**
+ * The static test a name from a run belongs to. A name that is not a literal (pattern null) matches any name,
+ * so the most precise match wins: literal before template before unknown, then the first in the file.
+ */
+export const findStaticTest = <T extends Pick<StaticTest, 'name'>>(tests: T[], name: string[]) => {
+  let best: T | undefined;
+  let bestScore = Infinity;
+  for (const test of tests) {
+    if (!matchesStaticTest(test, name)) {
+      continue;
+    }
+    const score = test.name.reduce(
+      (sum, part, index) => sum + (part.text === name[index] ? 0 : part.pattern === null ? 2 : 1),
+      0,
+    );
+    if (score < bestScore) {
+      best = test;
+      bestScore = score;
+    }
+  }
+  return best;
+};
