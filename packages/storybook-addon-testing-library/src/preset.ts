@@ -6,6 +6,7 @@ import type { InlineConfig, Plugin } from 'vite';
 
 import { VIRTUAL_SETUP_MODULE } from './shared/types.ts';
 import { DEFAULT_SPEC_PATTERNS, startSpecIndex } from './node/server.ts';
+import { isSpecFile } from './node/specIndex.ts';
 
 export type AddonOptions = {
   /** Glob patterns for spec files, relative to each directory with a vite/vitest config that has stories */
@@ -35,7 +36,7 @@ const wrapperPlugin = (specPatterns: string[]): Plugin => ({
   resolveId: (source, importer) => {
     const omslag = WRAPPERS[source];
     const file = importer?.split('?')[0];
-    return omslag && file && specPatterns.some(pattern => path.matchesGlob(file, pattern)) ? omslag : undefined;
+    return omslag && file && isSpecFile(file, specPatterns, process.cwd()) ? omslag : undefined;
   },
 });
 

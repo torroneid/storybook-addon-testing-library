@@ -46,6 +46,13 @@ export const findPackageRoot = (file: string, stopp: string) => {
   return undefined;
 };
 
+/** Spec patterns are relative to the package root, like in the index. Files outside one are matched by full path. */
+export const isSpecFile = (file: string, specPatterns: string[], workingDir: string) => {
+  const packageRoot = findPackageRoot(file, workingDir);
+  const relative = packageRoot ? path.relative(packageRoot, file) : file;
+  return specPatterns.some(pattern => path.matchesGlob(relative, pattern));
+};
+
 const findSiblingStoriesFile = (specFile: string) =>
   ['.tsx', '.ts']
     .map(extension => specFile.replace(/\.(spec|test)\.[jt]sx?$/, `.stories${extension}`))
