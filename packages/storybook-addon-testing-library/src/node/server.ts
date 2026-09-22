@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { experimental_UniversalStore } from 'storybook/internal/core-server';
+import { logger } from 'storybook/internal/node-logger';
 import type { Options } from 'storybook/internal/types';
 
 import { ADDON_ID, type SpecIndexState } from '../shared/types.ts';
@@ -64,7 +65,11 @@ export const startSpecIndex = async (options: Options, specPatterns: string[]) =
           }, 200),
         );
       });
-      vaktar.on('error', () => watchers.delete(packageRoot));
+      vaktar.on('error', error => {
+        logger.warn(`${ADDON_ID}: stopped watching ${packageRoot} for spec files: ${error}`);
+        vaktar.close();
+        watchers.delete(packageRoot);
+      });
       watchers.set(packageRoot, vaktar);
     }
   };
@@ -87,11 +92,15 @@ export const startSpecIndex = async (options: Options, specPatterns: string[]) =
     watchSpecFiles(packageRoots);
   };
 
+  // A failed index keeps the previous one; the error is logged, and Storybook itself keeps running
+  const tryBuildIndex = () =>
+    buildIndex().catch(error => logger.error(`${ADDON_ID}: could not index the spec files: ${error}`));
+
   let indexTimeout: NodeJS.Timeout | undefined;
   storyIndexGenerator.onInvalidated(() => {
     clearTimeout(indexTimeout);
-    indexTimeout = setTimeout(() => buildIndex().catch(() => undefined), 500);
+    indexTimeout = setTimeout(tryBuildIndex, 500);
   });
 
-  await buildIndex();
+  await tryBuildIndex();
 };
