@@ -302,7 +302,8 @@ export type RunOptions = {
   signal: AbortSignal;
 };
 
-let globalBeforeAllRun = false;
+/** The setup files' beforeAll hooks run once, before the first file. If they fail they run again before the next. */
+let globalBeforeAll: Promise<void> | undefined;
 
 const runTest = async (test: Test, name: string[], inheritedErrors: unknown[], skip: boolean, run: RunOptions) => {
   run.reporter.testStarted(name);
@@ -459,12 +460,15 @@ const runSuite = async (
 };
 
 export const runFile = async (root: Suite, run: RunOptions) => {
-  if (!globalBeforeAllRun) {
-    globalBeforeAllRun = true;
+  globalBeforeAll ??= (async () => {
     for (const beforeAllHook of globalSuite.beforeAll) {
       await beforeAllHook({} as TestContext);
     }
-  }
+  })().catch(error => {
+    globalBeforeAll = undefined;
+    throw error;
+  });
+  await globalBeforeAll;
   await runSuite(root, [], [], false, hasOnly(root), run);
 };
 
