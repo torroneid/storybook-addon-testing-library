@@ -265,7 +265,11 @@ export const toErrorInfo = (error: unknown): ErrorInfo => {
   };
 };
 
-const withTimeout = async (value: unknown, ms: number, kva: string) => {
+/**
+ * A timeout cannot stop the function, which keeps running after the next test has started, like in Vitest.
+ * `onTimeout` aborts the test's signal, so code that listens to it can stop.
+ */
+const withTimeout = async (value: unknown, ms: number, kva: string, onTimeout?: (error: Error) => void) => {
   // A test paused for the user in step-by-step mode must not time out
   if (!(value instanceof Promise) || stepModeActive()) {
     return value;
@@ -275,7 +279,11 @@ const withTimeout = async (value: unknown, ms: number, kva: string) => {
     return await Promise.race([
       value,
       new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`${kva} brukte meir enn ${ms} ms`)), ms);
+        timer = setTimeout(() => {
+          const error = new Error(`${kva} brukte meir enn ${ms} ms`);
+          onTimeout?.(error);
+          reject(error);
+        }, ms);
       }),
     ]);
   } finally {
@@ -319,10 +327,13 @@ const runTest = async (test: Test, name: string[], inheritedErrors: unknown[], s
   const failedHooks: Hook[] = [];
   const cleanups: Array<() => unknown> = [];
   let skipped = false;
+  // Aborted when the run is cancelled or the test times out
+  const testController = new AbortController();
+  const abortTest = (error: Error) => testController.abort(error);
   const context: TestContext = {
     task: { name: test.name, meta: {} },
     expect: loggingExpect,
-    signal: run.signal,
+    signal: AbortSignal.any([run.signal, testController.signal]),
     onTestFinished: hook => finishedHooks.push(hook),
     onTestFailed: hook => failedHooks.push(hook),
     skip: () => {
@@ -352,13 +363,13 @@ const runTest = async (test: Test, name: string[], inheritedErrors: unknown[], s
       try {
         for (const suite of chain) {
           for (const beforeEachHook of suite.beforeEach) {
-            const cleanup = await withTimeout(beforeEachHook(context), timeout, 'beforeEach');
+            const cleanup = await withTimeout(beforeEachHook(context), timeout, 'beforeEach', abortTest);
             if (typeof cleanup === 'function') {
               cleanups.unshift(cleanup as () => unknown);
             }
           }
         }
-        await withTimeout(test.fn(context), timeout, 'The test');
+        await withTimeout(test.fn(context), timeout, 'The test', abortTest);
         const state = expect.getState();
         if (state.expectedAssertionsNumber !== null && state.assertionCalls !== state.expectedAssertionsNumber) {
           errors.push(state.expectedAssertionsNumberErrorGen?.());
@@ -378,7 +389,7 @@ const runTest = async (test: Test, name: string[], inheritedErrors: unknown[], s
       }
       for (const suite of [...chain].reverse()) {
         for (const afterEachHook of [...suite.afterEach].reverse()) {
-          await withTimeout(afterEachHook(context), timeout, 'afterEach').catch(error => errors.push(error));
+          await withTimeout(afterEachHook(context), timeout, 'afterEach', abortTest).catch(error => errors.push(error));
         }
       }
     }

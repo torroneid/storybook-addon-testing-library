@@ -34,4 +34,19 @@ describe('runtime', () => {
 
     expect(calls).toBe(2);
   });
+
+  it('aborts the test’s signal when it times out', async () => {
+    const results: Array<[string, string]> = [];
+    const root = await collectFile(fixture);
+
+    await runFile(root, runOptions(results));
+
+    expect(results).toEqual([
+      ['never finishes', 'failed'],
+      ['runs afterwards', 'passed'],
+    ]);
+    const seen = (globalThis as { timeoutFixture?: { aborted?: boolean; reason?: unknown } }).timeoutFixture;
+    expect(seen?.aborted).toBe(true);
+    expect(String(seen?.reason)).toContain('50 ms');
+  });
 });
