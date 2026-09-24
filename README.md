@@ -78,11 +78,13 @@ picked up by Vite.
 
 ### The example
 
-| Component   | What its tests show                                                                            |
-| ----------- | ---------------------------------------------------------------------------------------------- |
-| `Counter`   | `composeStories` with `render(<Story />)` and `Story.run()`, plus `it.each` with `%s`          |
-| `LoginForm` | `vi.fn`, `userEvent.type`, a nested `describe`, `afterEach`, and a story used through a helper |
-| `Amount`    | A spec without `composeStories`, linked by file name, and `it.each` with `$variable`           |
+| Component    | What its tests show                                                                                                                                          |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Counter`    | `composeStories` with `render(<Story />)` and `Story.run()`, plus `it.each` with `%s`                                                                        |
+| `LoginForm`  | `vi.fn`, `userEvent.type`, a nested `describe`, `afterEach`, and a story used through a helper                                                               |
+| `Amount`     | A spec without `composeStories`, linked by file name, and `it.each` with `$variable`                                                                         |
+| `TodoList`   | A story rendered in `beforeEach`, `userEvent.setup()` with the keyboard, `within`, `describe.each`, `it.for` and `it.todo`                                   |
+| `UserSearch` | An async search: `findBy*`, `waitFor`, `waitForElementToBeRemoved`, `act` with promises the test resolves, and `Story.run()` continuing from a play function |
 
 ## License
 

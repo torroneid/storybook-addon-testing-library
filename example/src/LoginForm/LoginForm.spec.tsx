@@ -46,6 +46,8 @@ describe('LoginForm', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Log in' }));
 
       expect(screen.getByRole('alert')).toHaveTextContent('The password needs at least 8 characters');
+      // The username was typed, so only the password is wrong
+      expect(screen.getByRole('alert')).not.toHaveTextContent('Username is required');
     });
   });
 });
