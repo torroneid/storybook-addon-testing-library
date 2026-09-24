@@ -3,9 +3,16 @@ import { addons, type API, experimental_getStatusStore, types } from 'storybook/
 import { Addon_TypesEnum, type API_HashEntry } from 'storybook/internal/types';
 
 import { ADDON_ID, PANEL_ID, STATUS_TYPE_ID, TEST_PROVIDER_ID } from './shared/types.ts';
-import { IconButton } from './manager/components.tsx';
+import { DEBUG_SHORTCUT, IconButton } from './manager/components.tsx';
 import { Panel, PanelTitle } from './manager/Panel.tsx';
-import { connectToPreview, runTests, clearResults, useResults, useSpecFiles } from './manager/store.ts';
+import {
+  connectToPreview,
+  runTests,
+  clearResults,
+  debugLastFailure,
+  useResults,
+  useSpecFiles,
+} from './manager/store.ts';
 import { TestProviderWidget } from './manager/TestProviderWidget.tsx';
 
 const collectStoryIds = (api: API, entry: API_HashEntry): string[] => {
@@ -50,6 +57,18 @@ const ContextMenu = ({ api, entry }: { api: API; entry: API_HashEntry }) => {
 if ((globalThis as { CONFIG_TYPE?: string }).CONFIG_TYPE === 'DEVELOPMENT') {
   addons.register(ADDON_ID, api => {
     connectToPreview(api);
+
+    // Listed, and can be changed, under Keyboard shortcuts in Storybook's settings
+    api.setAddonShortcut(ADDON_ID, {
+      label: 'Debug the last failed test in DevTools',
+      defaultShortcut: DEBUG_SHORTCUT,
+      actionName: 'debugFailedTest',
+      showInMenu: false,
+      action: () => {
+        const story = api.getCurrentStoryData();
+        debugLastFailure(story?.type === 'story' ? story.id : undefined);
+      },
+    });
 
     experimental_getStatusStore(STATUS_TYPE_ID).onSelect(() => {
       api.setSelectedPanel(PANEL_ID);

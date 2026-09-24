@@ -15,6 +15,8 @@ Your `*.spec.tsx` files stay exactly as they are, and keep running in Vitest and
 
   ![A paused test, with the button it is about to click highlighted](docs/step-by-step.png)
 
+- **See why it failed**: the kind of failure, the step it happened in, the line in your source with the code around it,
+  and a shortcut that runs the test again and stops in Chrome DevTools just before the step that failed.
 - **Look back** at any step. Every step keeps a DOM snapshot, so you can inspect the DOM at the assertion that
   failed — without re-running the test.
 

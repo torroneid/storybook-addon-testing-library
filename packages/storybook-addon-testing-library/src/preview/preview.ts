@@ -4,6 +4,7 @@
  */
 import { STORY_CHANGED } from 'storybook/internal/core-events';
 import { addons } from 'storybook/preview-api';
+import { pause } from 'virtual:storybook-addon-testing-library/debugger';
 import { setupFiles } from 'virtual:storybook-addon-testing-library/setup';
 
 import {
@@ -33,12 +34,13 @@ import {
   loadSetupFiles,
   markDomBeforeTests,
   collectFile,
-  toErrorInfo,
+  describeError,
   vitestApi,
 } from './runtime.ts';
 import { dispatchFocusEventsWithoutWindowFocus } from './focus.ts';
 import { hideSnapshot, showSnapshot } from './snapshots.ts';
-import { cancelStep, resumeWithoutPausing, nextStep, startStepRun } from './steps.ts';
+import { setProjectRoot } from './stack.ts';
+import { cancelStep, resumeWithoutPausing, nextStep, setDebuggerStatement, startStepRun } from './steps.ts';
 
 type GlobalWithPreview = typeof globalThis & {
   __TESTING_LIBRARY_ADDON_VITEST__?: typeof vitestApi;
@@ -55,6 +57,8 @@ for (const [name, value] of Object.entries(vitestApi)) {
     Object.defineProperty(g, name, { value: value, configurable: true, writable: true });
   }
 }
+
+setDebuggerStatement(pause);
 
 const channel = addons.getChannel();
 
@@ -94,7 +98,14 @@ const exitTestView = async ({ visStory }: { visStory: boolean }) => {
 
 let lastRunId = 0;
 
-const run = async ({ runId, storyId, files, stepByStep }: RunRequest) => {
+/** The absolute path Storybook runs in, from a spec file's import path and its path relative to it */
+const projectRootOf = (file: RunRequest['files'][number] | undefined) => {
+  const absolute = file?.importPath.replace(/^\/@fs/, '');
+  const relative = file?.file.replace(/^\.\//, '/');
+  return absolute && relative && absolute.endsWith(relative) ? absolute.slice(0, -relative.length) : undefined;
+};
+
+const run = async ({ runId, storyId, files, stepByStep, debugAtStep }: RunRequest) => {
   // The manager repeats the request until the run has started
   if (runId <= lastRunId || (abortController && !abortController.signal.aborted)) {
     return;
@@ -105,7 +116,8 @@ const run = async ({ runId, storyId, files, stepByStep }: RunRequest) => {
   const previousActEnvironment = g.IS_REACT_ACT_ENVIRONMENT;
   const restoreFocus = dispatchFocusEventsWithoutWindowFocus();
   let lastTest: RunFinished['lastTest'];
-  startStepRun(runId, stepByStep);
+  startStepRun(runId, stepByStep, debugAtStep);
+  setProjectRoot(projectRootOf(files[0]));
   channel.emit(RUN_STARTED, { runId });
 
   try {
@@ -138,8 +150,14 @@ const run = async ({ runId, storyId, files, stepByStep }: RunRequest) => {
             !file.selectedTestIds || file.selectedTestIds.includes(toTestStarted(name).staticTestId ?? ''),
           reporter: {
             testStarted: name => channel.emit(TEST_STARTED, toTestStarted(name)),
-            testFinished: (name, status, durationMs, errors) => {
-              const result: TestResultFromPreview = { ...toTestStarted(name), status, durationMs, errors };
+            testFinished: (name, status, durationMs, errors, consoleErrors) => {
+              const result: TestResultFromPreview = {
+                ...toTestStarted(name),
+                status,
+                durationMs,
+                errors,
+                consoleErrors,
+              };
               channel.emit(TEST_FINISHED, result);
               if (status !== 'skipped') {
                 lastTest = { key: result.key, name };
@@ -148,11 +166,11 @@ const run = async ({ runId, storyId, files, stepByStep }: RunRequest) => {
           },
         });
       } catch (error) {
-        channel.emit(FILE_ERROR, { runId, file: file.file, error: [toErrorInfo(error)] });
+        channel.emit(FILE_ERROR, { runId, file: file.file, error: [await describeError(error)] });
       }
     }
   } catch (error) {
-    channel.emit(FILE_ERROR, { runId, file: '', error: [toErrorInfo(error)] });
+    channel.emit(FILE_ERROR, { runId, file: '', error: [await describeError(error)] });
   } finally {
     startStepRun(runId, undefined);
     g.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;

@@ -1,9 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { keyframes, styled } from 'storybook/theming';
 
-import type { ErrorInfo, TestStatus } from '../shared/types.ts';
+import type { CodeFrame, ErrorInfo, ErrorOrigin, StackFrame, TestStatus } from '../shared/types.ts';
+import { showSnapshot } from './store.ts';
 
 const spin = keyframes({ from: { transform: 'rotate(0deg)' }, to: { transform: 'rotate(360deg)' } });
+
+const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+
+/** Runs the last failed test again and stops in DevTools; registered in manager.tsx */
+export const DEBUG_SHORTCUT = ['alt', 'shift', 'D'];
+export const DEBUG_SHORTCUT_TEXT = isMac ? '⌥⇧D' : 'Alt+Shift+D';
 
 export const Button = styled.button<{ primary?: boolean }>(({ theme, primary }) => ({
   display: 'inline-flex',
@@ -84,19 +91,164 @@ const Pre = styled.pre(({ theme }) => ({
   overflow: 'auto',
 }));
 
-export const ErrorView = ({ error }: { error: ErrorInfo[] }) => (
+const ORIGINS: Record<ErrorOrigin, string> = {
+  assertion: 'Assertion failed',
+  query: 'Element not found',
+  thrown: 'Error thrown',
+  uncaught: 'Error thrown in your code',
+  rejection: 'Unhandled promise rejection',
+  timeout: 'Timed out',
+};
+
+const Headline = styled.div(({ theme }) => ({
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'baseline',
+  gap: 6,
+  marginTop: 8,
+  fontSize: theme.typography.size.s2,
+}));
+
+const Origin = styled.strong({ color: '#FF4400' });
+
+const LinkButton = styled.button(({ theme }) => ({
+  border: 'none',
+  background: 'transparent',
+  padding: 0,
+  color: theme.color.secondary,
+  fontSize: 'inherit',
+  fontFamily: theme.typography.fonts.mono,
+  cursor: 'pointer',
+  textAlign: 'left',
+  '&:hover': { textDecoration: 'underline' },
+}));
+
+const Code = styled.div(({ theme }) => ({
+  margin: '4px 0',
+  borderRadius: 4,
+  border: `1px solid ${theme.appBorderColor}`,
+  fontFamily: theme.typography.fonts.mono,
+  fontSize: theme.typography.size.s1,
+  overflow: 'auto',
+}));
+
+const CodeHeader = styled.div(({ theme }) => ({
+  padding: '4px 8px',
+  borderBottom: `1px solid ${theme.appBorderColor}`,
+  color: theme.textMutedColor,
+}));
+
+const CodeLine = styled.div<{ current: boolean }>(({ theme, current }) => ({
+  display: 'flex',
+  whiteSpace: 'pre',
+  background: current ? 'rgba(255, 68, 0, 0.12)' : 'transparent',
+  color: current ? theme.color.defaultText : theme.textMutedColor,
+}));
+
+const LineNumber = styled.span(({ theme }) => ({
+  minWidth: 44,
+  paddingRight: 8,
+  textAlign: 'right',
+  color: theme.textMutedColor,
+  userSelect: 'none',
+}));
+
+const position = (frame: { file: string; line: number; column: number }) =>
+  `${frame.file}:${frame.line}:${frame.column}`;
+
+const CodeFrameView = ({ codeFrame }: { codeFrame: CodeFrame }) => (
+  <Code>
+    <CodeHeader>{position(codeFrame)}</CodeHeader>
+    {codeFrame.lines.map(line => (
+      <React.Fragment key={line.number}>
+        <CodeLine current={line.number === codeFrame.line}>
+          <LineNumber>{line.number === codeFrame.line ? `> ${line.number}` : line.number}</LineNumber>
+          {line.text}
+        </CodeLine>
+        {line.number === codeFrame.line && (
+          <CodeLine current={false}>
+            <LineNumber />
+            <span style={{ color: '#FF4400' }}>{`${' '.repeat(Math.max(0, codeFrame.column - 1))}^`}</span>
+          </CodeLine>
+        )}
+      </React.Fragment>
+    ))}
+  </Code>
+);
+
+const FrameList = ({ frames }: { frames: StackFrame[] }) => {
+  const [showLibrary, setShowLibrary] = useState(false);
+  const library = frames.filter(frame => frame.library).length;
+  const shown = showLibrary ? frames : frames.filter(frame => !frame.library);
+  return (
+    <Pre as="div" style={{ background: 'transparent', padding: '4px 8px' }}>
+      {shown.map((frame, index) => (
+        <div key={index} style={{ opacity: frame.library ? 0.6 : 1 }}>
+          at {frame.fn ? `${frame.fn} ` : ''}({position(frame)})
+        </div>
+      ))}
+      {library > 0 && (
+        <LinkButton onClick={() => setShowLibrary(!showLibrary)}>
+          {showLibrary ? 'Hide' : 'Show'} {library} frames from libraries
+        </LinkButton>
+      )}
+    </Pre>
+  );
+};
+
+/** The step an error happened in, as a link to the DOM snapshot from just before it */
+const StepLink = ({ error, testKey }: { error: ErrorInfo; testKey?: string }) => {
+  const { step, origin } = error;
+  if (!step) {
+    return <span>before the first step</span>;
+  }
+  const when = origin === 'uncaught' || origin === 'rejection' ? 'during' : step.failed ? 'at' : 'after';
+  return (
+    <span>
+      {when} step {step.number}:{' '}
+      {testKey ? (
+        <LinkButton title="Show the DOM from just before this step" onClick={() => showSnapshot(testKey, step.number)}>
+          {step.label}
+        </LinkButton>
+      ) : (
+        <code>{step.label}</code>
+      )}
+    </span>
+  );
+};
+
+export const ErrorView = ({ error, testKey }: { error: ErrorInfo[]; testKey?: string }) => (
   <>
-    {error.map((f, index) => (
+    {error.map((info, index) => (
       <div key={index}>
-        <Pre>{f.message}</Pre>
-        {f.diff && <Pre>{f.diff}</Pre>}
-        {f.stack && (
+        {info.origin && (
+          <Headline>
+            <Origin>{ORIGINS[info.origin]}</Origin>
+            <StepLink error={info} testKey={testKey} />
+          </Headline>
+        )}
+        <Pre>{info.message}</Pre>
+        {info.diff && <Pre>{info.diff}</Pre>}
+        {info.codeFrame && <CodeFrameView codeFrame={info.codeFrame} />}
+        {(info.frames?.length || info.stack) && (
           <details>
             <summary style={{ cursor: 'pointer', fontSize: 12 }}>Stack</summary>
-            <Pre>{f.stack}</Pre>
+            {info.frames?.length ? <FrameList frames={info.frames} /> : <Pre>{info.stack}</Pre>}
           </details>
         )}
       </div>
     ))}
   </>
 );
+
+export const ConsoleErrors = ({ messages }: { messages: string[] }) =>
+  messages.length === 0 ? null : (
+    <details>
+      <summary style={{ cursor: 'pointer', fontSize: 12 }}>Logged with console.error ({messages.length})</summary>
+      {messages.map((message, index) => (
+        <Pre key={index} style={{ background: 'transparent' }}>
+          {message}
+        </Pre>
+      ))}
+    </details>
+  );

@@ -23,7 +23,12 @@ export const STEP_CONTINUE = `${ADDON_ID}/step-continue`;
 export const SHOW_SNAPSHOT = `${ADDON_ID}/show-snapshot`;
 export const SNAPSHOT_SHOWN = `${ADDON_ID}/snapshot-shown`;
 
+/** Debugging: whether DevTools paused before the step that failed */
+export const DEBUG_PAUSED = `${ADDON_ID}/debug-paused`;
+
 export const VIRTUAL_SETUP_MODULE = 'virtual:storybook-addon-testing-library/setup';
+/** Holds the debugger statement a debug run stops at (see preset.ts) */
+export const VIRTUAL_DEBUGGER_MODULE = 'virtual:storybook-addon-testing-library/debugger';
 
 export type StoryReference = {
   /** Absolute path to the stories file */
@@ -61,10 +66,37 @@ export type SpecIndexState = {
   specFiles: SpecFile[];
 };
 
+/** What kind of failure an error is, so the panel can say it in words */
+export type ErrorOrigin = 'assertion' | 'query' | 'thrown' | 'uncaught' | 'rejection' | 'timeout';
+
+export type StackFrame = {
+  fn?: string;
+  /** Relative to where Storybook runs when possible, like ./src/Button.tsx */
+  file: string;
+  line: number;
+  column: number;
+  /** Code from node_modules or the addon, which is collapsed in the panel */
+  library: boolean;
+};
+
+export type CodeFrame = {
+  file: string;
+  line: number;
+  column: number;
+  lines: Array<{ number: number; text: string }>;
+};
+
 export type ErrorInfo = {
   message: string;
   stack?: string;
   diff?: string;
+  origin?: ErrorOrigin;
+  /** The step the error happened during (failed) or after */
+  step?: { number: number; label: string; failed: boolean };
+  /** The stack, mapped back to the source files */
+  frames?: StackFrame[];
+  /** The source around the first frame in your own code */
+  codeFrame?: CodeFrame;
 };
 
 export type TestStatus = 'passed' | 'failed' | 'skipped';
@@ -88,6 +120,8 @@ export type RunRequest = {
   }>;
   /** Run step by step: pause before every interaction, starting at step `stopAtStep` (1-based) */
   stepByStep?: { stopAtStep?: number };
+  /** Stop in DevTools before this step (0: before the test starts), and never time out */
+  debugAtStep?: number;
 };
 
 export type StepStatus = 'paused' | 'running' | 'ok' | 'failed';
@@ -119,6 +153,8 @@ export type TestResultFromPreview = TestStarted & {
   status: TestStatus;
   durationMs: number;
   errors: ErrorInfo[];
+  /** What the test and the code under test logged with console.error */
+  consoleErrors?: string[];
 };
 
 export type RunFinished = {

@@ -4,7 +4,7 @@ import type { Channel } from 'storybook/internal/channels';
 import type { Options } from 'storybook/internal/types';
 import type { InlineConfig, Plugin } from 'vite';
 
-import { VIRTUAL_SETUP_MODULE } from './shared/types.ts';
+import { VIRTUAL_DEBUGGER_MODULE, VIRTUAL_SETUP_MODULE } from './shared/types.ts';
 import { DEFAULT_SPEC_PATTERNS, startSpecIndex } from './node/server.ts';
 import { isSpecFile } from './node/specIndex.ts';
 
@@ -54,6 +54,28 @@ const setupPlugin = (setupFiles: string[]): Plugin => {
   };
 };
 
+/**
+ * DevTools skips debugger statements in ignore-listed code, and node_modules, where the addon is installed, is on
+ * that list by default. Served as a virtual module the statement is not, and DevTools hides the addon's frames in
+ * the Call Stack, so stepping out lands in the spec.
+ */
+const DEBUGGER_SOURCE = `// storybook-addon-testing-library stopped here, just before the step that failed.
+// Step out (Shift+F11) to get to that step in your spec. From there, step into (F11) the call to follow it into
+// your code, or step over (F10) until the error is thrown.
+export const pause = () => {
+  debugger;
+};
+`;
+
+const debuggerPlugin = (): Plugin => {
+  const resolvedId = `\0${VIRTUAL_DEBUGGER_MODULE}`;
+  return {
+    name: 'storybook-addon-testing-library:debugger',
+    resolveId: id => (id === VIRTUAL_DEBUGGER_MODULE ? resolvedId : undefined),
+    load: id => (id === resolvedId ? DEBUGGER_SOURCE : undefined),
+  };
+};
+
 export const viteFinal = (config: InlineConfig, options: Options & AddonOptions): InlineConfig => {
   const specPatterns = options.specPatterns ?? DEFAULT_SPEC_PATTERNS;
   const existingAlias = config.resolve?.alias ?? [];
@@ -64,7 +86,12 @@ export const viteFinal = (config: InlineConfig, options: Options & AddonOptions)
 
   return {
     ...config,
-    plugins: [...(config.plugins ?? []), wrapperPlugin(specPatterns), setupPlugin(options.setupFiles ?? [])],
+    plugins: [
+      ...(config.plugins ?? []),
+      wrapperPlugin(specPatterns),
+      setupPlugin(options.setupFiles ?? []),
+      debuggerPlugin(),
+    ],
     resolve: {
       ...config.resolve,
       // Spec files import describe/it/expect/vi from 'vitest'. In Storybook they come from our own runtime.

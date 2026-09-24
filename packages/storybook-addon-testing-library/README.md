@@ -181,6 +181,25 @@ library Vitest's trace view uses. Click a step, or press **◀ Previous**, to se
 - Playback happens in a sandboxed iframe, so scripts in a snapshot never run. Password fields are shown as typed,
   since this is test data.
 
+## When a test fails
+
+- **What failed, and where.** Each error says what kind of failure it is — an assertion, an element Testing Library
+  could not find, an error thrown in your code (in a click handler, say), an unhandled promise rejection or a timeout —
+  and the step it happened in. Click the step to see the DOM just before it.
+- **The line that failed.** The stack is mapped back to your source files, and the lines around the first frame in
+  your own code are shown. Frames from libraries are folded away.
+- **Only your DOM.** When a query finds nothing, the DOM in the message is what the test rendered, not Storybook's
+  own page.
+- **`console.error`.** Whatever the test and your components logged with `console.error`, such as React's warnings,
+  is listed with the result.
+- **Debug in DevTools** — <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> (<kbd>⌥⇧D</kbd> on a Mac), or the button on a
+  failed test — runs the test again and stops in Chrome DevTools just before the step that failed. Step out
+  (<kbd>Shift</kbd>+<kbd>F11</kbd>) to get to that line in your spec, then step into (<kbd>F11</kbd>) the call to
+  follow it into your code. DevTools has to be open, and the panel tells you if it was not. Timeouts are off while
+  you debug. The shortcut can be changed under _Keyboard shortcuts_ in Storybook's settings.
+- Every failure is also logged in the preview's console, where DevTools shows the stack source-mapped and a click
+  opens the line in _Sources_.
+
 ## How tests are linked to stories
 
 The Storybook server analyzes the spec files (TypeScript AST): `composeStories(stories)` and `composeStory(...)` are
@@ -209,6 +228,9 @@ Two more things worth knowing:
 - Interactions become steps only when the spec file itself imports `@testing-library/react`,
   `@testing-library/user-event` or `@storybook/react-vite`. Calls inside helper files the spec imports still run, but
   do not appear as steps.
+- Chrome slows down timers in a tab you are not looking at, to as little as once a second. Tests that wait for
+  debounces or delays can then time out, so keep the Storybook tab visible while they run — next to your editor is
+  fine.
 - `expect` and `userEvent` come from `storybook/test`, so assertions and interactions also show up in Storybook's
   Interactions panel. For `userEvent` this is needed, not just convenient: Storybook sets up its own copy of
   user-event for every story, and two copies in one page stop typing from reaching React.

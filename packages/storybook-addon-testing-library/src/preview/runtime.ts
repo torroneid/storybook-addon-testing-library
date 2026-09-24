@@ -2,7 +2,7 @@
  * A small test runner for Vitest/Jest style tests (describe/it/hooks/each) inside the Storybook preview.
  * Assertions and spies come from storybook/test, which builds on the same @vitest/expect and @vitest/spy as Vitest.
  */
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure, prettyDOM } from '@testing-library/react';
 import {
   clearAllMocks,
   expect,
@@ -14,10 +14,11 @@ import {
   spyOn,
 } from 'storybook/test';
 
-import type { ErrorInfo, TestStatus } from '../shared/types.ts';
+import type { ErrorInfo, ErrorOrigin, TestStatus } from '../shared/types.ts';
 import { formatName, stripAnsi, display } from './formatName.ts';
 import { createLoggingExpect } from './loggingExpect.ts';
-import { CancelledError, endTestSteps, startTestSteps, stepModeActive } from './steps.ts';
+import { mapStack } from './stack.ts';
+import { CancelledError, endTestSteps, lastStep, pauseBeforeTest, startTestSteps, waitsForUser } from './steps.ts';
 
 type Hook = (context: TestContext) => unknown;
 type Mode = 'run' | 'skip' | 'only' | 'todo';
@@ -54,7 +55,13 @@ type Suite = {
 
 export type Reporter = {
   testStarted: (name: string[]) => void;
-  testFinished: (name: string[], status: TestStatus, durationMs: number, error: ErrorInfo[]) => void;
+  testFinished: (
+    name: string[],
+    status: TestStatus,
+    durationMs: number,
+    errors: ErrorInfo[],
+    consoleErrors: string[],
+  ) => void;
 };
 
 const DEFAULT_TIMEOUT = 20_000;
@@ -252,6 +259,10 @@ export const collectFile = async (importPath: string) => {
 
 // ---------- Running ----------
 
+class TimeoutError extends Error {
+  override name = 'TimeoutError';
+}
+
 export const toErrorInfo = (error: unknown): ErrorInfo => {
   if (!(error instanceof Error)) {
     return { message: stripAnsi(display(error)) };
@@ -265,13 +276,36 @@ export const toErrorInfo = (error: unknown): ErrorInfo => {
   };
 };
 
+const originOf = (error: unknown): ErrorOrigin => {
+  if (error instanceof TimeoutError) {
+    return 'timeout';
+  }
+  const failure = error as { name?: string; matcherResult?: unknown; actual?: unknown; expected?: unknown } | null;
+  // Chai throws AssertionError; jest-dom and other matchers throw errors with the actual and expected values
+  if (
+    failure?.name === 'AssertionError' ||
+    failure?.matcherResult !== undefined ||
+    (failure && 'actual' in failure && 'expected' in failure)
+  ) {
+    return 'assertion';
+  }
+  return failure?.name === 'TestingLibraryElementError' ? 'query' : 'thrown';
+};
+
+/** An error with its stack mapped to the source, and where in the test it happened */
+export const describeError = async (error: unknown, extra: Pick<ErrorInfo, 'origin' | 'step'> = {}) => {
+  const info = toErrorInfo(error);
+  const { frames, codeFrame } = await mapStack(info.stack);
+  return { ...info, origin: extra.origin ?? originOf(error), step: extra.step, frames, codeFrame };
+};
+
 /**
  * A timeout cannot stop the function, which keeps running after the next test has started, like in Vitest.
  * `onTimeout` aborts the test's signal, so code that listens to it can stop.
  */
 const withTimeout = async (value: unknown, ms: number, label: string, onTimeout?: (error: Error) => void) => {
-  // A test paused for the user in step-by-step mode must not time out
-  if (!(value instanceof Promise) || stepModeActive()) {
+  // A test paused for the user, step by step or in DevTools, must not time out
+  if (!(value instanceof Promise) || waitsForUser()) {
     return value;
   }
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -280,7 +314,7 @@ const withTimeout = async (value: unknown, ms: number, label: string, onTimeout?
       value,
       new Promise((_, reject) => {
         timer = setTimeout(() => {
-          const error = new Error(`${label} took more than ${ms} ms`);
+          const error = new TimeoutError(`${label} took more than ${ms} ms`);
           onTimeout?.(error);
           reject(error);
         }, ms);
@@ -316,13 +350,20 @@ let globalBeforeAll: Promise<void> | undefined;
 const runTest = async (test: Test, name: string[], inheritedErrors: unknown[], skip: boolean, run: RunOptions) => {
   run.reporter.testStarted(name);
   if (skip || test.mode === 'skip' || test.mode === 'todo' || !test.fn) {
-    run.reporter.testFinished(name, 'skipped', 0, []);
+    run.reporter.testFinished(name, 'skipped', 0, [], []);
     return;
   }
   cleanTestDom();
   startTestSteps(run.key(name));
   const start = performance.now();
   const errors: unknown[] = [...inheritedErrors];
+  // Where each error happened, and whether it escaped the test (thrown in an event handler, say)
+  const details = new Map<unknown, Pick<ErrorInfo, 'origin' | 'step'>>();
+  const fail = (error: unknown, origin?: ErrorOrigin) => {
+    const step = lastStep();
+    details.set(error, { origin, step: step && { ...step } });
+    errors.push(error);
+  };
   const finishedHooks: Hook[] = [];
   const failedHooks: Hook[] = [];
   const cleanups: Array<() => unknown> = [];
@@ -344,10 +385,26 @@ const runTest = async (test: Test, name: string[], inheritedErrors: unknown[], s
   const timeout = test.timeout ?? DEFAULT_TIMEOUT;
   const chain = suiteChain(test.parent);
   const captureError = (event: ErrorEvent | PromiseRejectionEvent) => {
-    errors.push('reason' in event ? event.reason : (event.error ?? event.message));
+    fail(
+      'reason' in event ? event.reason : (event.error ?? event.message),
+      'reason' in event ? 'rejection' : 'uncaught',
+    );
   };
   window.addEventListener('error', captureError);
   window.addEventListener('unhandledrejection', captureError);
+  const consoleErrors: string[] = [];
+  const nativeConsoleError = console.error;
+  console.error = (...args: unknown[]) => {
+    const [first, ...rest] = args;
+    consoleErrors.push(
+      stripAnsi(
+        typeof first === 'string' && /%[sdifjoOc]/.test(first)
+          ? formatName(first, rest, 0)
+          : args.map(arg => (arg instanceof Error ? (arg.stack ?? arg.message) : display(arg))).join(' '),
+      ),
+    );
+    nativeConsoleError.apply(console, args);
+  };
   currentContext = context;
   expect.setState({
     assertionCalls: 0,
@@ -361,6 +418,7 @@ const runTest = async (test: Test, name: string[], inheritedErrors: unknown[], s
   try {
     if (errors.length === 0) {
       try {
+        pauseBeforeTest();
         for (const suite of chain) {
           for (const beforeEachHook of suite.beforeEach) {
             const cleanup = await withTimeout(beforeEachHook(context), timeout, 'beforeEach', abortTest);
@@ -372,24 +430,24 @@ const runTest = async (test: Test, name: string[], inheritedErrors: unknown[], s
         await withTimeout(test.fn(context), timeout, 'The test', abortTest);
         const state = expect.getState();
         if (state.expectedAssertionsNumber !== null && state.assertionCalls !== state.expectedAssertionsNumber) {
-          errors.push(state.expectedAssertionsNumberErrorGen?.());
+          fail(state.expectedAssertionsNumberErrorGen?.());
         }
         if (state.isExpectingAssertions && state.assertionCalls === 0) {
-          errors.push(state.isExpectingAssertionsError);
+          fail(state.isExpectingAssertionsError);
         }
       } catch (error) {
         if (error instanceof CancelledError) {
           skipped = true;
         } else if (error !== SKIP) {
-          errors.push(error);
+          fail(error);
         }
       }
       for (const cleanup of cleanups) {
-        await Promise.resolve(cleanup()).catch(error => errors.push(error));
+        await Promise.resolve(cleanup()).catch(error => fail(error));
       }
       for (const suite of [...chain].reverse()) {
         for (const afterEachHook of [...suite.afterEach].reverse()) {
-          await withTimeout(afterEachHook(context), timeout, 'afterEach', abortTest).catch(error => errors.push(error));
+          await withTimeout(afterEachHook(context), timeout, 'afterEach', abortTest).catch(error => fail(error));
         }
       }
     }
@@ -399,20 +457,30 @@ const runTest = async (test: Test, name: string[], inheritedErrors: unknown[], s
       }
     }
     for (const hook of [...finishedHooks].reverse()) {
-      await Promise.resolve(hook(context)).catch(error => errors.push(error));
+      await Promise.resolve(hook(context)).catch(error => fail(error));
     }
   } finally {
     endTestSteps();
     currentContext = undefined;
     window.removeEventListener('error', captureError);
     window.removeEventListener('unhandledrejection', captureError);
+    console.error = nativeConsoleError;
   }
 
+  const durationMs = performance.now() - start;
+  const status = skipped ? 'skipped' : errors.length > 0 ? 'failed' : 'passed';
+  if (status === 'failed') {
+    // In the preview's console, DevTools shows the stacks source-mapped, and a click opens the line in Sources
+    console.groupCollapsed(`%c✗ ${name.join(' › ')}`, 'color: #ff4400');
+    errors.forEach(error => nativeConsoleError(error));
+    console.groupEnd();
+  }
   run.reporter.testFinished(
     name,
-    skipped ? 'skipped' : errors.length > 0 ? 'failed' : 'passed',
-    performance.now() - start,
-    errors.map(toErrorInfo),
+    status,
+    durationMs,
+    await Promise.all(errors.map(error => describeError(error, details.get(error)))),
+    consoleErrors,
   );
 };
 
@@ -491,6 +559,24 @@ let nodesBeforeTests: Set<Node> | undefined;
 export const markDomBeforeTests = () => {
   nodesBeforeTests ??= new Set(document.body.childNodes);
 };
+
+/** What the tests added to <body>, so error messages do not include Storybook's own elements */
+const testNodes = () => [...document.body.childNodes].filter(node => !nodesBeforeTests?.has(node));
+
+configure({
+  getElementError: (message, container) => {
+    const shown =
+      container === document.body || container === document.documentElement
+        ? testNodes()
+            .filter((node): node is Element => node instanceof Element)
+            .map(node => prettyDOM(node))
+            .join('\n')
+        : prettyDOM(container);
+    const error = new Error([message, shown].filter(Boolean).join('\n\n'));
+    error.name = 'TestingLibraryElementError';
+    return error;
+  },
+});
 
 export const cleanTestDom = () => {
   cleanup();

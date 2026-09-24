@@ -3,9 +3,19 @@ import { useStorybookState } from 'storybook/manager-api';
 import { styled } from 'storybook/theming';
 
 import type { SpecFile, StaticTest, StepInfo } from '../shared/types.ts';
-import { ErrorView, IconButton, Button, Spinner, StatusIcon } from './components.tsx';
+import {
+  ConsoleErrors,
+  DEBUG_SHORTCUT_TEXT,
+  ErrorView,
+  IconButton,
+  Button,
+  Spinner,
+  StatusIcon,
+} from './components.tsx';
 import {
   cancel,
+  closeDebug,
+  debugTest,
   isTestPending,
   previousStep,
   resumeWithoutPausing,
@@ -204,9 +214,10 @@ const TestResultRow = ({
   handling?: React.ReactNode;
 }) => {
   const [open, setOpen] = useState(false);
-  const { steps: allSteps } = useResults();
+  const { steps: allSteps, run } = useResults();
   const steps = allSteps[result.key] ?? [];
-  const canExpand = result.errors.length > 0 || steps.length > 0;
+  const consoleErrors = result.consoleErrors ?? [];
+  const canExpand = result.errors.length > 0 || steps.length > 0 || consoleErrors.length > 0;
   return (
     <>
       <Row onClick={() => setOpen(!open)} style={{ paddingLeft: onlyLastName ? 38 : 20 }}>
@@ -218,7 +229,17 @@ const TestResultRow = ({
       </Row>
       {(open || result.status === 'failed') && canExpand && (
         <Details>
-          <ErrorView error={result.errors} />
+          {result.status === 'failed' && result.staticTestId && (
+            <Button
+              disabled={!!run}
+              title={`Run the test again and stop in DevTools just before the step that failed (${DEBUG_SHORTCUT_TEXT})`}
+              onClick={() => debugTest(result)}
+            >
+              Debug in DevTools <span style={{ opacity: 0.7, fontWeight: 'normal' }}>{DEBUG_SHORTCUT_TEXT}</span>
+            </Button>
+          )}
+          <ErrorView error={result.errors} testKey={result.key} />
+          <ConsoleErrors messages={consoleErrors} />
           {steps.length > 0 && <StepList steps={steps} />}
         </Details>
       )}
@@ -314,6 +335,34 @@ const SpecFileView = ({ specFile, storyId }: { specFile: SpecFile; storyId: stri
         <TestResultRow key={r.key} result={r} onlyLastName={false} />
       ))}
     </div>
+  );
+};
+
+/** What happened to a debug run: stopped in DevTools, or ran through because DevTools was closed */
+const DebugBanner = () => {
+  const { debug, run } = useResults();
+  if (!debug) {
+    return null;
+  }
+  const where = debug.step > 0 ? `step ${debug.step}` : 'the start of the test';
+  const text =
+    debug.paused === true
+      ? `DevTools stopped just before ${where}${debug.label && debug.step > 0 ? `: ${debug.label}` : ''}. Step out (Shift+F11) to get to that line in your spec, then step into (F11) the call to follow it into your code.`
+      : debug.paused === false
+        ? `The test did not stop, because DevTools was closed. Open DevTools (F12, or ⌥⌘I on a Mac) and debug again (${DEBUG_SHORTCUT_TEXT}). The error is also logged in its Console, with a stack you can click.`
+        : run
+          ? `Running “${formatName(debug.testName)}”, to stop in DevTools before ${where}…`
+          : undefined;
+  if (!text) {
+    return null;
+  }
+  return (
+    <Banner>
+      <span style={{ flex: 1 }}>{text}</span>
+      <IconButton title="Close" aria-label="Close" onClick={closeDebug}>
+        ✕
+      </IconButton>
+    </Banner>
   );
 };
 
@@ -413,7 +462,7 @@ const StepPanel = () => {
         </Banner>
       )}
       {steps.length === 0 ? <Muted>Waiting for the first step…</Muted> : <StepList steps={steps} />}
-      {result && !state.run && result.errors.length > 0 && <ErrorView error={result.errors} />}
+      {result && !state.run && result.errors.length > 0 && <ErrorView error={result.errors} testKey={result.key} />}
       <Muted>
         The test pauses before every async interaction (userEvent, findBy, waitFor, Story.run()) and highlights the
         element in the canvas. render, fireEvent and expect are logged. Click a step to see the DOM as it was just
@@ -462,6 +511,7 @@ export const Panel = () => {
           </Muted>
         )}
       </Toolbar>
+      <DebugBanner />
       <TestViewBanner />
       <StepPanel />
       {generalErrors.length > 0 && (
