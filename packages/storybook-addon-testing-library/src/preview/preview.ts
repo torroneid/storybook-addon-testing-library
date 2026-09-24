@@ -36,6 +36,7 @@ import {
   toErrorInfo,
   vitestApi,
 } from './runtime.ts';
+import { dispatchFocusEventsWithoutWindowFocus } from './focus.ts';
 import { hideSnapshot, showSnapshot } from './snapshots.ts';
 import { cancelStep, resumeWithoutPausing, nextStep, startStepRun } from './steps.ts';
 
@@ -102,6 +103,7 @@ const run = async ({ runId, storyId, files, stepByStep }: RunRequest) => {
   const controller = new AbortController();
   abortController = controller;
   const previousActEnvironment = g.IS_REACT_ACT_ENVIRONMENT;
+  const restoreFocus = dispatchFocusEventsWithoutWindowFocus();
   let lastTest: RunFinished['lastTest'];
   startStepRun(runId, stepByStep);
   channel.emit(RUN_STARTED, { runId });
@@ -154,6 +156,7 @@ const run = async ({ runId, storyId, files, stepByStep }: RunRequest) => {
   } finally {
     startStepRun(runId, undefined);
     g.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+    restoreFocus();
     const finished: RunFinished = { runId, cancelled: controller.signal.aborted, lastTest };
     controller.abort();
     channel.emit(RUN_FINISHED, finished);
