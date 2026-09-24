@@ -209,7 +209,9 @@ Two more things worth knowing:
 - Interactions become steps only when the spec file itself imports `@testing-library/react`,
   `@testing-library/user-event` or `@storybook/react-vite`. Calls inside helper files the spec imports still run, but
   do not appear as steps.
-- `expect` comes from `storybook/test`, so assertions also show up in Storybook's Interactions panel.
+- `expect` and `userEvent` come from `storybook/test`, so assertions and interactions also show up in Storybook's
+  Interactions panel. For `userEvent` this is needed, not just convenient: Storybook sets up its own copy of
+  user-event for every story, and two copies in one page stop typing from reaching React.
 
 ## Compared to Storybook play functions
 
