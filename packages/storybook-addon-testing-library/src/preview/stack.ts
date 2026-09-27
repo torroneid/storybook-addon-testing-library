@@ -23,9 +23,8 @@ export const parseStack = (stack: string): RawFrame[] =>
       : [];
   });
 
-/** node_modules, Vite's prebundled dependencies and the addon itself */
-const isLibrary = (url: string) =>
-  /\/node_modules\/|\/deps\/|\/storybook-addon-testing-library\/(dist|src)\//.test(url);
+/** node_modules (which holds Vite's prebundled dependencies too) and the addon itself */
+const isLibrary = (url: string) => /\/node_modules\/|\/storybook-addon-testing-library\/(dist|src)\//.test(url);
 
 let projectRoot: string | undefined;
 
