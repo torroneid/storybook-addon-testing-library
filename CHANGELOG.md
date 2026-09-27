@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1-0
+
+Prerelease that checks publishing to npm through trusted publishing. No changes to the addon.
+
 ## 0.1.0
 
 First release.
