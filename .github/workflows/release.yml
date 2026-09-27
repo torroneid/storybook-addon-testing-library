@@ -4,8 +4,8 @@ name: Release
 # commit and creates a GitHub release. Merges that leave the version alone publish nothing.
 #
 # To release: bump the version in packages/storybook-addon-testing-library/package.json and update CHANGELOG.md in
-# the pull request. Needs an NPM_TOKEN secret: a granular access token with publish access and "bypass 2FA" on,
-# since npm refuses a publish from CI otherwise.
+# the pull request. Publishes through npm trusted publishing (OIDC), so there is no npm token: the package's settings
+# on npmjs.com must name this repository and release.yml as a trusted publisher.
 
 on:
   push:
@@ -49,11 +49,12 @@ jobs:
         run: npm run build
       - if: steps.version.outputs.publish == 'true'
         run: npm test
+      # Trusted publishing needs npm 11.5.1 or later, newer than the one Node 22 ships with
+      - if: steps.version.outputs.publish == 'true'
+        run: npm install -g npm@latest
       - if: steps.version.outputs.publish == 'true'
         run: npm publish --provenance --access public ${{ contains(steps.version.outputs.version, '-') && '--tag next' || '' }}
         working-directory: packages/storybook-addon-testing-library
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - if: steps.version.outputs.publish == 'true'
         name: Tag and create a GitHub release
         run: gh release create "v$VERSION" --target "$GITHUB_SHA" --title "v$VERSION" --generate-notes ${{ startsWith(steps.version.outputs.version, '0.') && '--prerelease' || '' }}
