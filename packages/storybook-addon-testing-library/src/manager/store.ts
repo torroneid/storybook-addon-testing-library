@@ -167,7 +167,7 @@ let lastRunId = 0;
 export const runTests = (
   selection: RunSelection,
   stepByStep?: { stopAtStep?: number },
-  debug?: { step: number; testName: string[] },
+  debug?: { key: string; step: number; testName: string[] },
 ) => {
   if (!api || state.run) {
     return;
@@ -220,7 +220,7 @@ export const runTests = (
       selectedTestIds: selection.type === 'all' || selection.type === 'file' ? undefined : tests.map(test => test.id),
     })),
     stepByStep: selection.type === 'test' ? stepByStep : undefined,
-    debugAtStep: selection.type === 'test' ? debug?.step : undefined,
+    debugAt: debug && selection.type === 'test' ? { key: debug.key, step: debug.step } : undefined,
   };
   // The preview may not have loaded yet, so repeat the request until the run starts (the preview ignores duplicates).
   const managerApi = api;
@@ -322,6 +322,7 @@ export const debugTest = (result: TestResult) => {
   }
   const step = result.errors.find(error => error.step)?.step?.number ?? 0;
   runTests({ type: 'test', file: result.file, testId: result.staticTestId }, undefined, {
+    key: result.key,
     step,
     testName: result.name,
   });

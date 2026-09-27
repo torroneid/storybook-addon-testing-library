@@ -29,8 +29,8 @@ type Controller = {
   waiting?: { resume: () => void; reject: (error: Error) => void };
   /** The latest step in the current test, so an error can say where it happened */
   lastStep?: Step;
-  /** A debug run: stop in DevTools before this step (0: before the test), and never time out */
-  breakAt?: number;
+  /** A debug run: stop in DevTools before this step (0: before the test) of the test with this key, and never time out */
+  breakAt?: { key: string; step: number };
   debugging: boolean;
 };
 
@@ -62,17 +62,23 @@ const send = (number: number, label: string, pausable: boolean, status: StepStat
 /** The test waits for the user, in step-by-step mode or in DevTools, so it must not time out */
 export const waitsForUser = () => control.active || control.debugging;
 
-export const startStepRun = (runId: number, stepByStep: { stopAtStep?: number } | undefined, debugAtStep?: number) => {
+export const startStepRun = (
+  runId: number,
+  stepByStep: { stopAtStep?: number } | undefined,
+  debugAt?: { key: string; step: number },
+) => {
   hideSnapshot();
   control.active = !!stepByStep;
   control.stopAtStep = stepByStep?.stopAtStep ?? 1;
   control.runId = runId;
   control.key = '';
-  control.breakAt = debugAtStep;
-  control.debugging = debugAtStep !== undefined;
+  control.breakAt = debugAt;
+  control.debugging = debugAt !== undefined;
 };
 
 export const lastStep = () => control.lastStep;
+
+const breaksAt = (number: number) => control.breakAt?.key === control.key && control.breakAt.step === number;
 
 let pause = () => {
   debugger;
@@ -95,7 +101,7 @@ const pauseInDevTools = (label: string) => {
 
 /** In a debug run that should stop before the first step */
 export const pauseBeforeTest = () => {
-  if (control.breakAt === 0) {
+  if (breaksAt(0)) {
     pauseInDevTools('the start of the test');
   }
 };
@@ -164,7 +170,7 @@ export const logStep = <T>(label: () => string, execute: () => T): T => {
   const text = label();
   const step: Step = (control.lastStep = { number, label: text, failed: false });
   takeSnapshot(control.key, number, undefined);
-  if (control.breakAt === number) {
+  if (breaksAt(number)) {
     pauseInDevTools(text);
   }
   try {
@@ -220,7 +226,7 @@ export const pausableStep = async <T>(
   }
   // If the user is looking at an earlier step, bring the canvas back to the live DOM first
   hideSnapshot();
-  if (control.breakAt === number) {
+  if (breaksAt(number)) {
     pauseInDevTools(text);
   }
   send(number, text, true, 'running');

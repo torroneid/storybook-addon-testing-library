@@ -120,8 +120,11 @@ export type RunRequest = {
   }>;
   /** Run step by step: pause before every interaction, starting at step `stopAtStep` (1-based) */
   stepByStep?: { stopAtStep?: number };
-  /** Stop in DevTools before this step (0: before the test starts), and never time out */
-  debugAtStep?: number;
+  /**
+   * Stop in DevTools before this step (0: before the test starts) of the test with this result key, and never time
+   * out. The key picks out one case of an it.each, since every case runs under the same test id.
+   */
+  debugAt?: { key: string; step: number };
 };
 
 export type StepStatus = 'paused' | 'running' | 'ok' | 'failed';
