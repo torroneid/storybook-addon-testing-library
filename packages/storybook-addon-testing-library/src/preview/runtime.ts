@@ -285,7 +285,7 @@ const originOf = (error: unknown): ErrorOrigin => {
   if (
     failure?.name === 'AssertionError' ||
     failure?.matcherResult !== undefined ||
-    (failure && 'actual' in failure && 'expected' in failure)
+    (typeof failure === 'object' && failure !== null && 'actual' in failure && 'expected' in failure)
   ) {
     return 'assertion';
   }
