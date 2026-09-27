@@ -90,4 +90,4 @@ picked up by Vite.
 
 ## License
 
-MIT © Tor Røneid
+MIT © storybook-addon-testing-library contributors

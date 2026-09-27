@@ -24,7 +24,6 @@
     "directory": "packages/storybook-addon-testing-library"
   },
   "license": "MIT",
-  "author": "Tor Røneid",
   "type": "module",
   "exports": {
     "./preset": "./dist/preset.js",
