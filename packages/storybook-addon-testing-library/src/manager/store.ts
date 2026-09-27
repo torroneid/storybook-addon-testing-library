@@ -64,7 +64,10 @@ export type ResultState = {
   stepByStep?: { selection: SingleTestSelection; key?: string };
   /** The canvas is showing a DOM snapshot from an earlier step instead of the live DOM */
   snapshot?: { key: string; number: number };
-  /** A run that stops in DevTools before the step that failed. `paused` is known once it got there or ended */
+  /**
+   * A run that stops in DevTools before the step that failed. `paused` is known once it got there, and stays unknown
+   * if the run ended first
+   */
   debug?: { runId: number; testName: string[]; step: number; paused?: boolean; label?: string };
 };
 
@@ -422,8 +425,6 @@ export const connectToPreview = (managerApi: API) => {
       run: undefined,
       lastRun: { ...finished, finishedAt: Date.now() },
       testView: s.testView && { ...s.testView, lastTest: finished.lastTest },
-      // A debug run that never reached the step did not stop either
-      debug: s.debug?.runId === finished.runId ? { ...s.debug, paused: s.debug.paused ?? false } : s.debug,
     }));
     updateStatuses(affectedStoryIds);
     if (pendingRestart) {
