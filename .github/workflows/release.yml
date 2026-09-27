@@ -4,7 +4,8 @@ name: Release
 # commit and creates a GitHub release. Merges that leave the version alone publish nothing.
 #
 # To release: bump the version in packages/storybook-addon-testing-library/package.json and update CHANGELOG.md in
-# the pull request. Needs an NPM_TOKEN secret with publish access.
+# the pull request. Needs an NPM_TOKEN secret: a granular access token with publish access and "bypass 2FA" on,
+# since npm refuses a publish from CI otherwise.
 
 on:
   push:
