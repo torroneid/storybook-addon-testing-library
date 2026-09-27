@@ -1,6 +1,6 @@
 {
   "name": "storybook-addon-testing-library",
-  "version": "0.1.0",
+  "version": "0.1.1-0",
   "description": "Run your existing Testing Library specs inside the Storybook canvas, under the stories they use, with step-by-step debugging",
   "keywords": [
     "storybook-addons",
