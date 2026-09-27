@@ -64,7 +64,10 @@ export type ResultState = {
   stepByStep?: { selection: SingleTestSelection; key?: string };
   /** The canvas is showing a DOM snapshot from an earlier step instead of the live DOM */
   snapshot?: { key: string; number: number };
-  /** A run that stops in DevTools before the step that failed. `paused` is known once it got there or ended */
+  /**
+   * A run that stops in DevTools before the step that failed. `paused` is known once it got there, and stays unknown
+   * if the run ended first
+   */
   debug?: { runId: number; testName: string[]; step: number; paused?: boolean; label?: string };
 };
 
@@ -167,7 +170,7 @@ let lastRunId = 0;
 export const runTests = (
   selection: RunSelection,
   stepByStep?: { stopAtStep?: number },
-  debug?: { step: number; testName: string[] },
+  debug?: { key: string; step: number; testName: string[] },
 ) => {
   if (!api || state.run) {
     return;
@@ -220,7 +223,7 @@ export const runTests = (
       selectedTestIds: selection.type === 'all' || selection.type === 'file' ? undefined : tests.map(test => test.id),
     })),
     stepByStep: selection.type === 'test' ? stepByStep : undefined,
-    debugAtStep: selection.type === 'test' ? debug?.step : undefined,
+    debugAt: debug && selection.type === 'test' ? { key: debug.key, step: debug.step } : undefined,
   };
   // The preview may not have loaded yet, so repeat the request until the run starts (the preview ignores duplicates).
   const managerApi = api;
@@ -322,6 +325,7 @@ export const debugTest = (result: TestResult) => {
   }
   const step = result.errors.find(error => error.step)?.step?.number ?? 0;
   runTests({ type: 'test', file: result.file, testId: result.staticTestId }, undefined, {
+    key: result.key,
     step,
     testName: result.name,
   });
@@ -421,8 +425,6 @@ export const connectToPreview = (managerApi: API) => {
       run: undefined,
       lastRun: { ...finished, finishedAt: Date.now() },
       testView: s.testView && { ...s.testView, lastTest: finished.lastTest },
-      // A debug run that never reached the step did not stop either
-      debug: s.debug?.runId === finished.runId ? { ...s.debug, paused: s.debug.paused ?? false } : s.debug,
     }));
     updateStatuses(affectedStoryIds);
     if (pendingRestart) {

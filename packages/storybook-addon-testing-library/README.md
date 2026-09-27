@@ -325,4 +325,4 @@ This package lives in a small monorepo together with an example project. See
 
 ## License
 
-MIT © Tor Røneid
+MIT © storybook-addon-testing-library contributors

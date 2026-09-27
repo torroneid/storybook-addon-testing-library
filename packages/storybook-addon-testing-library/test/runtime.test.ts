@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { beforeAll, collectFile, loadSetupFiles, runFile, type RunOptions } from '../src/preview/runtime.ts';
 
 const fixture = new URL('./fixtures/timeout.fixture.ts', import.meta.url).pathname;
+const throwsStringFixture = new URL('./fixtures/throwsString.fixture.ts', import.meta.url).pathname;
 
 const runOptions = (results: Array<[string, string]>): RunOptions => ({
   signal: new AbortController().signal,
@@ -48,5 +49,18 @@ describe('runtime', () => {
     const seen = (globalThis as { timeoutFixture?: { aborted?: boolean; reason?: unknown } }).timeoutFixture;
     expect(seen?.aborted).toBe(true);
     expect(String(seen?.reason)).toContain('50 ms');
+  });
+
+  // An ErrorEvent without an error, such as ResizeObserver's, is reported with its message, a string, too
+  it('reports an error that is not an object', async () => {
+    const results: Array<[string, string]> = [];
+    const root = await collectFile(throwsStringFixture);
+
+    await runFile(root, runOptions(results));
+
+    expect(results).toEqual([
+      ['throws a string', 'failed'],
+      ['runs afterwards', 'passed'],
+    ]);
   });
 });

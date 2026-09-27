@@ -338,7 +338,10 @@ const SpecFileView = ({ specFile, storyId }: { specFile: SpecFile; storyId: stri
   );
 };
 
-/** What happened to a debug run: stopped in DevTools, or ran through because DevTools was closed */
+/**
+ * What happened to a debug run: stopped in DevTools, ran through because DevTools was closed, or ended before it got
+ * to the step
+ */
 const DebugBanner = () => {
   const { debug, run } = useResults();
   if (!debug) {
@@ -352,10 +355,7 @@ const DebugBanner = () => {
         ? `The test did not stop, because DevTools was closed. Open DevTools (F12, or ⌥⌘I on a Mac) and debug again (${DEBUG_SHORTCUT_TEXT}). The error is also logged in its Console, with a stack you can click.`
         : run
           ? `Running “${formatName(debug.testName)}”, to stop in DevTools before ${where}…`
-          : undefined;
-  if (!text) {
-    return null;
-  }
+          : `The test did not stop, because this time it never got to ${where}: it passed, failed earlier, or failed outside a step. See its result below.`;
   return (
     <Banner>
       <span style={{ flex: 1 }}>{text}</span>

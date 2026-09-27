@@ -1,17 +1,22 @@
 name: Release
 
-# Publishes the addon to npm when a GitHub release is published, which only
-# maintainers can do. Needs an NPM_TOKEN secret with publish access.
+# Publishes the addon to npm when a merge to main changes its version to one that is not on npm yet, then tags the
+# commit and creates a GitHub release. Merges that leave the version alone publish nothing.
 #
-# To release: bump the version in packages/storybook-addon-testing-library/package.json,
-# update CHANGELOG.md, then publish a GitHub release.
+# To release: bump the version in packages/storybook-addon-testing-library/package.json and update CHANGELOG.md in
+# the pull request. Needs an NPM_TOKEN secret with publish access.
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
+
+# A second merge waits for the first release to finish, so both cannot publish the same version
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 jobs:
@@ -24,10 +29,33 @@ jobs:
           node-version: 22
           cache: npm
           registry-url: https://registry.npmjs.org
-      - run: npm ci
-      - run: npm run build
-      - run: npm test
-      - run: npm publish --provenance --access public
+      - name: Check whether the version is already on npm
+        id: version
+        working-directory: packages/storybook-addon-testing-library
+        run: |
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if npm view "$name@$version" version > /dev/null 2>&1; then
+            echo "$name@$version is already on npm, so there is nothing to publish"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.version.outputs.publish == 'true'
+        run: npm ci
+      - if: steps.version.outputs.publish == 'true'
+        run: npm run build
+      - if: steps.version.outputs.publish == 'true'
+        run: npm test
+      - if: steps.version.outputs.publish == 'true'
+        run: npm publish --provenance --access public ${{ contains(steps.version.outputs.version, '-') && '--tag next' || '' }}
         working-directory: packages/storybook-addon-testing-library
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - if: steps.version.outputs.publish == 'true'
+        name: Tag and create a GitHub release
+        run: gh release create "v$VERSION" --target "$GITHUB_SHA" --title "v$VERSION" --generate-notes ${{ startsWith(steps.version.outputs.version, '0.') && '--prerelease' || '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}

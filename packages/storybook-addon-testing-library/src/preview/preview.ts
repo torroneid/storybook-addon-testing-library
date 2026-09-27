@@ -105,7 +105,7 @@ const projectRootOf = (file: RunRequest['files'][number] | undefined) => {
   return absolute && relative && absolute.endsWith(relative) ? absolute.slice(0, -relative.length) : undefined;
 };
 
-const run = async ({ runId, storyId, files, stepByStep, debugAtStep }: RunRequest) => {
+const run = async ({ runId, storyId, files, stepByStep, debugAt }: RunRequest) => {
   // The manager repeats the request until the run has started
   if (runId <= lastRunId || (abortController && !abortController.signal.aborted)) {
     return;
@@ -116,7 +116,7 @@ const run = async ({ runId, storyId, files, stepByStep, debugAtStep }: RunReques
   const previousActEnvironment = g.IS_REACT_ACT_ENVIRONMENT;
   const restoreFocus = dispatchFocusEventsWithoutWindowFocus();
   let lastTest: RunFinished['lastTest'];
-  startStepRun(runId, stepByStep, debugAtStep);
+  startStepRun(runId, stepByStep, debugAt);
   setProjectRoot(projectRootOf(files[0]));
   channel.emit(RUN_STARTED, { runId });
 

@@ -93,4 +93,12 @@ describe('mapStack', () => {
 
     expect(frames[0]?.file).toBe('./src/Price.spec.ts');
   });
+
+  it('treats a deps folder in the project as the project’s code', async () => {
+    vi.stubGlobal('fetch', async () => new Response('', { status: 404 }));
+
+    const { frames } = await mapStack('    at parsePrice (http://localhost:6006/src/deps/Price.ts?t=1:6:11)');
+
+    expect(frames[0]?.library).toBe(false);
+  });
 });
