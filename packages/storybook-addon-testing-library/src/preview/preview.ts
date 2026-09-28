@@ -35,6 +35,7 @@ import {
   markDomBeforeTests,
   collectFile,
   describeError,
+  endFile,
   vitestApi,
 } from './runtime.ts';
 import { dispatchFocusEventsWithoutWindowFocus } from './focus.ts';
@@ -167,6 +168,9 @@ const run = async ({ runId, storyId, files, stepByStep, debugAt }: RunRequest) =
         });
       } catch (error) {
         channel.emit(FILE_ERROR, { runId, file: file.file, error: [await describeError(error)] });
+      } finally {
+        // The file may have faked timers or recorded mocks while it loaded, and never got to run
+        endFile();
       }
     }
   } catch (error) {

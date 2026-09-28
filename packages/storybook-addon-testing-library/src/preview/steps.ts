@@ -8,6 +8,7 @@ import { addons } from 'storybook/preview-api';
 import { DEBUG_PAUSED, STEP, type StepInfo, type StepStatus } from '../shared/types.ts';
 import { stripAnsi, display } from './formatName.ts';
 import { forgetSnapshotsFor, hasSnapshot, hideSnapshot, takeSnapshot } from './snapshots.ts';
+import { realNow } from './timers.ts';
 
 export class CancelledError extends Error {
   constructor() {
@@ -92,10 +93,10 @@ export const setDebuggerStatement = (statement: () => void) => {
 /** Stops in DevTools, if it is open, and tells the manager whether it did */
 const pauseInDevTools = (label: string) => {
   control.breakAt = undefined;
-  const start = performance.now();
+  const start = realNow();
   pause();
   // Nothing measurable passes unless DevTools stopped
-  const paused = performance.now() - start > 100;
+  const paused = realNow() - start > 100;
   addons.getChannel().emit(DEBUG_PAUSED, { runId: control.runId, paused, label });
 };
 

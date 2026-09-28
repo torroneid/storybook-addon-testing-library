@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0
+
+- `vi.mock`, `vi.doMock`, `vi.unmock`, `vi.hoisted`, `vi.importActual` and `vi.importMock` in specs and setup files.
+  Imports of mocked modules go through proxy modules whose exports are swapped while the spec file runs.
+- Fake timers: `vi.useFakeTimers`, `vi.useRealTimers`, `vi.advanceTimersByTime`, `vi.runAllTimers`,
+  `vi.setSystemTime` and the rest, on `@sinonjs/fake-timers` like in Vitest
+
 ## 0.1.1-0
 
 Prerelease that checks publishing to npm through trusted publishing. No changes to the addon.

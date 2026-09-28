@@ -5,6 +5,7 @@ import { beforeAll, collectFile, loadSetupFiles, runFile, type RunOptions } from
 
 const fixture = new URL('./fixtures/timeout.fixture.ts', import.meta.url).pathname;
 const throwsStringFixture = new URL('./fixtures/throwsString.fixture.ts', import.meta.url).pathname;
+const fakeTimersFixture = new URL('./fixtures/fakeTimers.fixture.ts', import.meta.url).pathname;
 
 const runOptions = (results: Array<[string, string]>): RunOptions => ({
   signal: new AbortController().signal,
@@ -62,5 +63,23 @@ describe('runtime', () => {
       ['throws a string', 'failed'],
       ['runs afterwards', 'passed'],
     ]);
+  });
+
+  it('runs tests with fake timers, and restores the real ones after the file', async () => {
+    const nativeSetTimeout = globalThis.setTimeout;
+    const nativeDate = globalThis.Date;
+    const results: Array<[string, string]> = [];
+    const root = await collectFile(fakeTimersFixture);
+
+    await runFile(root, runOptions(results));
+
+    expect(results).toEqual([
+      ['advances fake time', 'passed'],
+      ['fakes the date', 'passed'],
+      ['times out on real time while the timers are fake', 'failed'],
+      ['leaves the timers fake', 'passed'],
+    ]);
+    expect(globalThis.setTimeout).toBe(nativeSetTimeout);
+    expect(globalThis.Date).toBe(nativeDate);
   });
 });

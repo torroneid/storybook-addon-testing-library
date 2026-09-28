@@ -42,7 +42,7 @@ const searchRoots = new Map<string, string>();
  * How far up to look for a package root: the repository Storybook runs in, so stories from sibling packages in a
  * monorepo are found. Without a repository, only the working directory.
  */
-const findSearchRoot = (workingDir: string) => {
+export const findSearchRoot = (workingDir: string) => {
   let root = searchRoots.get(workingDir);
   if (root === undefined) {
     root = workingDir;
