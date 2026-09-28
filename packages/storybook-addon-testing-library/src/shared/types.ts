@@ -30,6 +30,32 @@ export const VIRTUAL_SETUP_MODULE = 'virtual:storybook-addon-testing-library/set
 /** Holds the debugger statement a debug run stops at (see preset.ts) */
 export const VIRTUAL_DEBUGGER_MODULE = 'virtual:storybook-addon-testing-library/debugger';
 
+/** Where the proxy modules for mocked modules register, so vi.mock can swap their exports (see node/mockPlugin.ts) */
+export const MOCKED_MODULES_GLOBAL = '__TESTING_LIBRARY_ADDON_MOCKED_MODULES__';
+export const MOCK_PATH_MARKER = '__storybookAddonTestingLibraryMock';
+
+/** What a proxy module registers: its original exports, and how to set the exports it shows */
+export type MockedModule = {
+  original: Record<string, unknown>;
+  mock?: Record<string, unknown>;
+  setters: Set<(exports: Record<string, unknown>) => void>;
+};
+
+/** The path in a vi.mock call, resolved when the spec file is transformed */
+export type MockPath = {
+  [MOCK_PATH_MARKER]: true;
+  /** As written in the call */
+  path: string;
+  /** The resolved module, which its proxy module registers under */
+  key: string;
+  /** Imports the proxy module, so it registers */
+  load: () => Promise<unknown>;
+  /** A mock in a __mocks__ directory, used by vi.mock without a factory */
+  mocksFile?: () => Promise<unknown>;
+  /** Why the module cannot be mocked */
+  error?: string;
+};
+
 export type StoryReference = {
   /** Absolute path to the stories file */
   storiesFile: string;

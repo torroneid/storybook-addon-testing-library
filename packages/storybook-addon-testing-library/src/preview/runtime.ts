@@ -17,8 +17,11 @@ import {
 import type { ErrorInfo, ErrorOrigin, TestStatus } from '../shared/types.ts';
 import { formatName, stripAnsi, display } from './formatName.ts';
 import { createLoggingExpect } from './loggingExpect.ts';
+import { applyMocks, moduleMocks, recordMocks, restoreModules, settleMocks } from './mocks.ts';
 import { mapStack } from './stack.ts';
 import { CancelledError, endTestSteps, lastStep, pauseBeforeTest, startTestSteps, waitsForUser } from './steps.ts';
+import * as timers from './timers.ts';
+import { realClearTimeout, realDateNow, realNow, realSetTimeout, resetTimers } from './timers.ts';
 
 type Hook = (context: TestContext) => unknown;
 type Mode = 'run' | 'skip' | 'only' | 'todo';
@@ -204,11 +207,54 @@ const loggingExpect = createLoggingExpect(
   expect as unknown as (...args: unknown[]) => unknown,
 ) as unknown as typeof expect;
 
-const vi = new Proxy(
-  { fn, spyOn, mocked, isMockFunction, clearAllMocks, resetAllMocks, restoreAllMocks } as Record<string, unknown>,
+/** Like in Vitest, the functions that change state return vi, so calls can be chained */
+const chain =
+  <Args extends unknown[]>(action: (...args: Args) => unknown) =>
+  (...args: Args) => {
+    action(...args);
+    return vi;
+  };
+const chainAsync =
+  <Args extends unknown[]>(action: (...args: Args) => Promise<unknown>) =>
+  async (...args: Args) => {
+    await action(...args);
+    return vi;
+  };
+
+const vi: Record<string, unknown> = new Proxy(
+  {
+    fn,
+    spyOn,
+    mocked,
+    isMockFunction,
+    clearAllMocks: chain(clearAllMocks),
+    resetAllMocks: chain(resetAllMocks),
+    restoreAllMocks: chain(restoreAllMocks),
+    ...moduleMocks,
+    useFakeTimers: chain(timers.useFakeTimers),
+    useRealTimers: chain(timers.useRealTimers),
+    isFakeTimers: timers.isFakeTimers,
+    advanceTimersByTime: chain(timers.advanceTimersByTime),
+    advanceTimersByTimeAsync: chainAsync(timers.advanceTimersByTimeAsync),
+    advanceTimersToNextTimer: chain(timers.advanceTimersToNextTimer),
+    advanceTimersToNextTimerAsync: chainAsync(timers.advanceTimersToNextTimerAsync),
+    advanceTimersToNextFrame: chain(timers.advanceTimersToNextFrame),
+    runAllTimers: chain(timers.runAllTimers),
+    runAllTimersAsync: chainAsync(timers.runAllTimersAsync),
+    runOnlyPendingTimers: chain(timers.runOnlyPendingTimers),
+    runOnlyPendingTimersAsync: chainAsync(timers.runOnlyPendingTimersAsync),
+    runAllTicks: chain(timers.runAllTicks),
+    clearAllTimers: chain(timers.clearAllTimers),
+    getTimerCount: timers.getTimerCount,
+    setTimerTickMode: chain(timers.setTimerTickMode),
+    setSystemTime: chain(timers.setSystemTime),
+    getMockedSystemTime: timers.getMockedSystemTime,
+    getRealSystemTime: timers.getRealSystemTime,
+  } as Record<string, unknown>,
   {
     get: (template, property) => {
-      if (typeof property === 'string' && !(property in template)) {
+      // Not a thenable, so the async functions can resolve to vi
+      if (typeof property === 'string' && !(property in template) && property !== 'then') {
         throw new Error(`vi.${property} is not supported when specs run in Storybook`);
       }
       return template[property as string];
@@ -237,9 +283,11 @@ export const vitestApi = {
 export const loadSetupFiles = async (importers: Array<() => Promise<unknown>>) => {
   collector = globalSuite;
   try {
-    for (const importer of importers) {
-      await importer();
-    }
+    await recordMocks('setup', async () => {
+      for (const importer of importers) {
+        await importer();
+      }
+    });
   } finally {
     collector = undefined;
   }
@@ -250,7 +298,7 @@ export const collectFile = async (importPath: string) => {
   collector = root;
   try {
     // A fresh URL for every run, so describe/it register again
-    await import(/* @vite-ignore */ `${importPath}?spec-tests=${Date.now()}`);
+    await recordMocks('file', () => import(/* @vite-ignore */ `${importPath}?spec-tests=${realDateNow()}`));
   } finally {
     collector = undefined;
   }
@@ -308,12 +356,12 @@ const withTimeout = async (value: unknown, ms: number, label: string, onTimeout?
   if (!(value instanceof Promise) || waitsForUser()) {
     return value;
   }
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timer: ReturnType<typeof realSetTimeout> | undefined;
   try {
     return await Promise.race([
       value,
       new Promise((_, reject) => {
-        timer = setTimeout(() => {
+        timer = realSetTimeout(() => {
           const error = new TimeoutError(`${label} took more than ${ms} ms`);
           onTimeout?.(error);
           reject(error);
@@ -321,7 +369,7 @@ const withTimeout = async (value: unknown, ms: number, label: string, onTimeout?
       }),
     ]);
   } finally {
-    clearTimeout(timer);
+    realClearTimeout(timer);
   }
 };
 
@@ -355,7 +403,7 @@ const runTest = async (test: Test, name: string[], inheritedErrors: unknown[], s
   }
   cleanTestDom();
   startTestSteps(run.key(name));
-  const start = performance.now();
+  const start = realNow();
   const errors: unknown[] = [...inheritedErrors];
   // Where each error happened, and whether it escaped the test (thrown in an event handler, say)
   const details = new Map<unknown, Pick<ErrorInfo, 'origin' | 'step'>>();
@@ -427,6 +475,8 @@ const runTest = async (test: Test, name: string[], inheritedErrors: unknown[], s
             }
           }
         }
+        // vi.mock in a beforeEach hook may have an async factory
+        await settleMocks();
         await withTimeout(test.fn(context), timeout, 'The test', abortTest);
         const state = expect.getState();
         if (state.expectedAssertionsNumber !== null && state.assertionCalls !== state.expectedAssertionsNumber) {
@@ -467,7 +517,7 @@ const runTest = async (test: Test, name: string[], inheritedErrors: unknown[], s
     console.error = nativeConsoleError;
   }
 
-  const durationMs = performance.now() - start;
+  const durationMs = realNow() - start;
   const status = skipped ? 'skipped' : errors.length > 0 ? 'failed' : 'passed';
   if (status === 'failed') {
     // In the preview's console, DevTools shows the stacks source-mapped, and a click opens the line in Sources
@@ -539,16 +589,27 @@ const runSuite = async (
 };
 
 export const runFile = async (root: Suite, run: RunOptions) => {
-  globalBeforeAll ??= (async () => {
-    for (const beforeAllHook of globalSuite.beforeAll) {
-      await beforeAllHook({} as TestContext);
-    }
-  })().catch(error => {
-    globalBeforeAll = undefined;
-    throw error;
-  });
-  await globalBeforeAll;
-  await runSuite(root, [], [], false, hasOnly(root), run);
+  try {
+    await applyMocks();
+    globalBeforeAll ??= (async () => {
+      for (const beforeAllHook of globalSuite.beforeAll) {
+        await beforeAllHook({} as TestContext);
+      }
+    })().catch(error => {
+      globalBeforeAll = undefined;
+      throw error;
+    });
+    await globalBeforeAll;
+    await runSuite(root, [], [], false, hasOnly(root), run);
+  } finally {
+    endFile();
+  }
+};
+
+/** Gives the canvas its real modules and timers back, and the next file starts without the last file's */
+export const endFile = () => {
+  restoreModules();
+  resetTimers();
 };
 
 // ---------- DOM in the canvas ----------

@@ -5,6 +5,7 @@ import type { Options } from 'storybook/internal/types';
 import type { InlineConfig, Plugin } from 'vite';
 
 import { VIRTUAL_DEBUGGER_MODULE, VIRTUAL_SETUP_MODULE } from './shared/types.ts';
+import { mockPlugin } from './node/mockPlugin.ts';
 import { DEFAULT_SPEC_PATTERNS, startSpecIndex } from './node/server.ts';
 import { isSpecFile } from './node/specIndex.ts';
 
@@ -91,6 +92,7 @@ export const viteFinal = (config: InlineConfig, options: Options & AddonOptions)
       wrapperPlugin(specPatterns),
       setupPlugin(options.setupFiles ?? []),
       debuggerPlugin(),
+      mockPlugin(specPatterns, options.setupFiles ?? []),
     ],
     resolve: {
       ...config.resolve,
@@ -106,7 +108,13 @@ export const viteFinal = (config: InlineConfig, options: Options & AddonOptions)
         ...specPatterns,
         ...(options.setupFiles ?? []),
       ],
-      include: [...(config.optimizeDeps?.include ?? []), '@testing-library/react', '@testing-library/user-event'],
+      include: [
+        ...(config.optimizeDeps?.include ?? []),
+        '@testing-library/react',
+        '@testing-library/user-event',
+        // CommonJS, which the browser can only import once Vite has bundled it
+        'storybook-addon-testing-library > @sinonjs/fake-timers',
+      ],
     },
   };
 };

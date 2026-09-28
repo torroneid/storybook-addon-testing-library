@@ -65,8 +65,9 @@ under **Other tests in this file**, even without `composeStories`.
 
 - Browser-mode APIs from `vitest/browser`: `page`, `userEvent` from that package, locators, `commands`, `server`.
   Those need Vitest's own browser runner. Testing Library covers the same ground here.
-- `vi.mock`, fake timers and other `vi.*` functions beyond the spy helpers, and async `describe` blocks. You get a
-  clear error instead of a silent difference.
+- `vi.*` functions not listed under [What is supported](#what-is-supported) (such as `vi.stubGlobal` and
+  `vi.resetModules`), and async `describe` blocks. You get a clear error instead of a silent difference.
+- `vi.mock` of CommonJS packages, and `vi.mock` with a path that is not a string literal in the call.
 - Node-only APIs such as `node:fs`, since the tests run in the browser.
 
 Such a spec still runs in Vitest as before. It just cannot be run from the panel.
@@ -127,7 +128,7 @@ jest-dom matchers. It does no harm, and Vitest still needs it.
 Two things to keep in mind:
 
 - The file runs in the browser, through Storybook's Vite server. Imports from `vitest` are served by the addon, so
-  `beforeAll`, `beforeEach`, `expect` and the `vi` spy helpers work. Node-only code, `vi.mock` and fake timers do not.
+  `beforeAll`, `beforeEach`, `expect`, `vi.mock` and the other `vi` helpers work. Node-only code does not.
   If your Vitest setup has such parts (a jsdom workaround, for example), guard them or move them to a separate file.
 - Paths are resolved from the directory you start Storybook in, like the `stories` globs in `main.ts`.
 
@@ -219,6 +220,24 @@ Names from `.each`/`.for` (`%s`, `%d`, `$variable` …) are turned into patterns
 - `expect` with the jest-dom matchers, and `vi.fn`, `vi.spyOn`, `vi.mocked`, `vi.clearAllMocks`, `vi.resetAllMocks`,
   `vi.restoreAllMocks` — all from `storybook/test`, which builds on the same `@vitest/expect` and `@vitest/spy` as
   Vitest
+- Fake timers: `vi.useFakeTimers`, `vi.useRealTimers`, `vi.advanceTimersByTime`, `vi.runAllTimers`,
+  `vi.runOnlyPendingTimers`, `vi.advanceTimersToNextTimer` (all with `Async` variants), `vi.setSystemTime` and the
+  rest, on `@sinonjs/fake-timers` like in Vitest. The real timers come back after every spec file.
+- Module mocks: `vi.mock` (with a factory, `importOriginal`, `{ spy: true }`, automocking or a `__mocks__`
+  directory), `vi.doMock`, `vi.unmock`, `vi.doUnmock`, `vi.hoisted`, `vi.importActual` and `vi.importMock`, in spec
+  and setup files
+
+**How `vi.mock` differs from Vitest.** In Storybook the stories and components have imported their modules long
+before a spec runs, so the addon cannot hoist `vi.mock` above the imports. Instead, every import of a module that some
+spec mocks goes through a small proxy module, and `vi.mock` swaps the proxy's exports while the spec file runs. The
+originals come back afterwards, so the stories render as usual. In practice:
+
+- The mock is in place when the tests and hooks run, not while modules are first imported. Code that calls the mocked
+  module at the top level of another module, such as story `args` built with it, sees the original.
+- The factory runs after the spec file has loaded, so it can use any variable in the file. `vi.hoisted` works too.
+- An export the factory leaves out is `undefined`, where Vitest throws when it is used.
+- When you add `vi.mock` for a module no spec mocked before, Storybook reloads the preview once, so the module gets
+  its proxy.
 
 See [What you need](#what-you-need) for what a spec cannot use. The addon is only active in `storybook dev`; a static
 build has no dev server to load the specs from.
@@ -311,6 +330,9 @@ src/preview/steps.ts     Step by step: pausing, logging and element highlighting
 src/preview/snapshots.ts DOM snapshots and playback
 src/preview/wrappers/    Wrappers around @testing-library and @storybook/react-vite, for spec files only
 src/preview/vitest.ts    Stands in for 'vitest' when spec files are imported in Storybook
+src/preview/mocks.ts     vi.mock and the other module mocks: swaps the exports of proxy modules
+src/preview/timers.ts    Fake timers, on @sinonjs/fake-timers like in Vitest
+src/node/mockPlugin.ts   Vite plugin: routes imports of mocked modules through proxy modules
 ```
 
 - The spec file is imported through Storybook's own Vite dev server, with a fresh URL for each run.
