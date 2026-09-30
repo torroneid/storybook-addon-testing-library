@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { keyframes, styled } from 'storybook/theming';
 
 import type { CodeFrame, ErrorInfo, ErrorOrigin, StackFrame, TestStatus } from '../shared/types.ts';
-import { openInEditor, showSnapshot } from './store.ts';
+import { logFrameInConsole, showSnapshot } from './store.ts';
 
 const spin = keyframes({ from: { transform: 'rotate(0deg)' }, to: { transform: 'rotate(360deg)' } });
 
@@ -150,13 +150,12 @@ const LineNumber = styled.span(({ theme }) => ({
 const position = (frame: { file: string; line: number; column: number }) =>
   `${frame.file}:${frame.line}:${frame.column}`;
 
-/** A position in a stack, as a link that opens it in your editor when the file is known */
+/** A position in your own code, as a link that logs it in the browser's console, where it links to the source */
 const Position = ({ frame }: { frame: StackFrame | CodeFrame }) => {
-  const { path } = frame;
-  return path ? (
+  return frame.served ? (
     <LinkButton
-      title="Open in your editor"
-      onClick={() => openInEditor({ path, line: frame.line, column: frame.column })}
+      title="Log in the browser's console (DevTools), where a click opens it in Sources"
+      onClick={() => logFrameInConsole(frame)}
     >
       {position(frame)}
     </LinkButton>

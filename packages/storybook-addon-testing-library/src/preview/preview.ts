@@ -9,6 +9,7 @@ import { setupFiles } from 'virtual:storybook-addon-testing-library/setup';
 import {
   CANCEL,
   EXIT_TEST_VIEW,
+  LOG_FRAME,
   FILE_ERROR,
   type RunRequest,
   RUN_FINISHED,
@@ -41,7 +42,7 @@ import { blockFilePickers } from './filePickers.ts';
 import { dispatchFocusEventsWithoutWindowFocus } from './focus.ts';
 import { remountStory, type StoryPreview } from './remount.ts';
 import { hideSnapshot, showSnapshot } from './snapshots.ts';
-import { setProjectRoot } from './stack.ts';
+import { logFrame, setProjectRoot } from './stack.ts';
 import { cancelStep, resumeWithoutPausing, nextStep, startStepRun } from './steps.ts';
 
 type GlobalWithPreview = typeof globalThis & {
@@ -190,6 +191,7 @@ channel.on(RUN, (request: RunRequest) => {
   run(request).catch(() => undefined);
 });
 channel.on(CANCEL, cancel);
+channel.on(LOG_FRAME, logFrame);
 channel.on(STEP_NEXT, () => {
   hideSnapshot();
   emitSnapshotShown('');

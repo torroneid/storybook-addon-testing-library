@@ -5,7 +5,7 @@
  */
 import { originalPositionFor, sourceContentFor, TraceMap } from '@jridgewell/trace-mapping';
 
-import type { CodeFrame, StackFrame } from '../shared/types.ts';
+import type { CodeFrame, ServedPosition, StackFrame } from '../shared/types.ts';
 
 type RawFrame = { fn?: string; url: string; line: number; column: number };
 
@@ -33,27 +33,19 @@ export const setProjectRoot = (root: string | undefined) => {
   projectRoot = root;
 };
 
-/** The file a URL from the Vite dev server was served from */
-const filePath = (url: string) => {
+const displayPath = (url: string) => {
   let path: string;
   try {
     path = decodeURIComponent(new URL(url).pathname);
   } catch {
-    return undefined;
-  }
-  if (path.startsWith('/@fs/')) {
-    return path.slice('/@fs'.length);
-  }
-  // Served from Vite's root, which is where Storybook runs
-  return projectRoot ? `${projectRoot}${path}` : `.${path}`;
-};
-
-const displayPath = (url: string) => {
-  const path = filePath(url);
-  if (!path) {
     return url;
   }
-  return projectRoot && path.startsWith(`${projectRoot}/`) ? `.${path.slice(projectRoot.length)}` : path;
+  if (path.startsWith('/@fs/')) {
+    path = path.slice('/@fs'.length);
+    return projectRoot && path.startsWith(`${projectRoot}/`) ? `.${path.slice(projectRoot.length)}` : path;
+  }
+  // Served from Vite's root, which is where Storybook runs
+  return `.${path}`;
 };
 
 const maps = new Map<string, Promise<TraceMap | undefined>>();
@@ -88,7 +80,7 @@ const codeFrameFrom = (map: TraceMap, source: string, frame: StackFrame): CodeFr
   for (let number = first; number <= last; number++) {
     lines.push({ number, text: all[number - 1] ?? '' });
   }
-  return { file: frame.file, path: frame.path, line: frame.line, column: frame.column, lines };
+  return { file: frame.file, line: frame.line, column: frame.column, lines, fn: frame.fn, served: frame.served };
 };
 
 /** The frames of a stack, mapped to the source, and the code around the first frame in your own code */
@@ -100,10 +92,10 @@ export const mapStack = async (stack: string | undefined): Promise<{ frames: Sta
     const frame: StackFrame = {
       fn: raw.fn,
       file: displayPath(raw.url),
-      path: library ? undefined : filePath(raw.url),
       line: raw.line,
       column: raw.column,
       library,
+      served: library ? undefined : { url: raw.url, line: raw.line, column: raw.column },
     };
     const map = !library && index < MAX_MAPPED_FRAMES ? await loadMap(raw.url) : undefined;
     if (map) {
@@ -117,4 +109,27 @@ export const mapStack = async (stack: string | undefined): Promise<{ frames: Sta
     frames.push(frame);
   }
   return { frames, codeFrame };
+};
+
+/**
+ * Logs a frame in the console as an error with only that frame in its stack. DevTools maps the stack with the
+ * served code's source map, so the line links to the source file, and a click opens it in Sources.
+ */
+export const logFrame = ({
+  fn,
+  file,
+  line,
+  column,
+  served,
+}: {
+  fn?: string;
+  file: string;
+  line: number;
+  column: number;
+  served: ServedPosition;
+}) => {
+  const error = new Error(`${file}:${line}:${column}`);
+  error.name = 'storybook-addon-testing-library';
+  error.stack = `${error.name}: ${error.message}\n    at ${fn ?? '<anonymous>'} (${served.url}:${served.line}:${served.column})`;
+  console.log(error);
 };

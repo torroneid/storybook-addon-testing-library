@@ -11,6 +11,8 @@ import {
   ADDON_ID,
   CANCEL,
   EXIT_TEST_VIEW,
+  LOG_FRAME,
+  type CodeFrame,
   type ErrorInfo,
   FILE_ERROR,
   RUN,
@@ -24,6 +26,7 @@ import {
   type SnapshotShown,
   SNAPSHOT_SHOWN,
   STATUS_TYPE_ID,
+  type StackFrame,
   type StaticTest,
   STEP,
   STEP_CONTINUE,
@@ -304,9 +307,8 @@ export const closeStepByStep = () => {
   setState(s => ({ ...s, stepByStep: undefined }));
 };
 
-/** Opens a file from a stack in the editor, through the Storybook server (which shows a notification if it fails) */
-export const openInEditor = ({ path, line, column }: { path: string; line: number; column: number }) =>
-  api?.openInEditor({ file: path, line, column });
+/** Logs a frame of a stack in the preview's console, where DevTools links it to the source file */
+export const logFrameInConsole = (frame: StackFrame | CodeFrame) => api?.emit(LOG_FRAME, frame);
 
 export const clearResults = () => {
   setState(s => ({ ...s, results: {}, fileErrors: {}, steps: {}, lastRun: undefined }));

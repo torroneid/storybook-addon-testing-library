@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- Click a file in a failed test's stack, or above the code shown, to open it at that line in your editor. It goes
-  through Storybook's own open-in-editor.
+- Click a file in a failed test's stack, or above the code shown, to log that line in the browser's console. DevTools
+  links it to the source file there, and a click opens it in _Sources_.
 - Removed **Debug in DevTools** and its shortcut (Alt+Shift+D). It stopped in DevTools before the step that failed,
   and from there the code that threw was hard to reach. The failures are still logged in the preview's console, where
   DevTools maps the stack to your files and a click opens the line in _Sources_.

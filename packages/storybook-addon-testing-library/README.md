@@ -188,9 +188,9 @@ library Vitest's trace view uses. Click a step, or press **◀ Previous**, to se
   could not find, an error thrown in your code (in a click handler, say), an unhandled promise rejection or a timeout —
   and the step it happened in. Click the step to see the DOM just before it.
 - **The line that failed.** The stack is mapped back to your source files, and the lines around the first frame in
-  your own code are shown. Frames from libraries are folded away. Click a file in the stack to open it at that line in
-  your editor. Storybook opens it, in the editor it finds running or the one in the `LAUNCH_EDITOR` environment
-  variable.
+  your own code are shown. Frames from libraries are folded away. Click a file in the stack to log that line in the
+  browser's console (open DevTools first): there DevTools links it to your source file, and a click opens it in
+  _Sources_, where you can set a breakpoint.
 - **Only your DOM.** When a query finds nothing, the DOM in the message is what the test rendered, not Storybook's
   own page.
 - **`console.error`.** Whatever the test and your components logged with `console.error`, such as React's warnings,

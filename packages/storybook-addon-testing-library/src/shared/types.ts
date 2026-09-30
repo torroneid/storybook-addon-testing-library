@@ -7,6 +7,8 @@ export const STATUS_TYPE_ID = `${ADDON_ID}/status`;
 export const RUN = `${ADDON_ID}/run`;
 export const CANCEL = `${ADDON_ID}/cancel`;
 export const EXIT_TEST_VIEW = `${ADDON_ID}/exit-test-view`;
+/** Log a stack frame in the preview's console, where DevTools links it to the source */
+export const LOG_FRAME = `${ADDON_ID}/log-frame`;
 
 /** Preview → manager */
 export const RUN_STARTED = `${ADDON_ID}/run-started`;
@@ -90,24 +92,28 @@ export type SpecIndexState = {
 /** What kind of failure an error is, so the panel can say it in words */
 export type ErrorOrigin = 'assertion' | 'query' | 'thrown' | 'uncaught' | 'rejection' | 'timeout';
 
+/** A position in the code the browser runs, as Chrome reports it in a stack: before source maps, 1-based */
+export type ServedPosition = { url: string; line: number; column: number };
+
 export type StackFrame = {
   fn?: string;
   /** Relative to where Storybook runs when possible, like ./src/Button.tsx */
   file: string;
-  /** The file on disk, which the panel opens in your editor. Relative paths are relative to where Storybook runs. */
-  path?: string;
   line: number;
   column: number;
   /** Code from node_modules or the addon, which is collapsed in the panel */
   library: boolean;
+  /** Where the frame is in the served code, so the preview can log it in the console (your own code only) */
+  served?: ServedPosition;
 };
 
 export type CodeFrame = {
   file: string;
-  path?: string;
   line: number;
   column: number;
   lines: Array<{ number: number; text: string }>;
+  fn?: string;
+  served?: ServedPosition;
 };
 
 export type ErrorInfo = {
