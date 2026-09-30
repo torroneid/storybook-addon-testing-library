@@ -2,10 +2,11 @@
 
 ## Unreleased
 
-- Debug in DevTools now shows where the error was thrown. Before it stops, the debug run logs the errors from the
-  test's last run in the Console, where DevTools maps the stacks to your source files: click the line in your code, set
-  a breakpoint and resume (F8), and the test stops there. Before, it only stopped ahead of the step that failed, and
-  getting from there to an error in a component meant stepping through the addon and all of user-event.
+- Click a file in a failed test's stack, or above the code shown, to open it at that line in your editor. It goes
+  through Storybook's own open-in-editor.
+- Removed **Debug in DevTools** and its shortcut (Alt+Shift+D). It stopped in DevTools before the step that failed,
+  and from there the code that threw was hard to reach. The failures are still logged in the preview's console, where
+  DevTools maps the stack to your files and a click opens the line in _Sources_.
 
 ## 0.2.1
 

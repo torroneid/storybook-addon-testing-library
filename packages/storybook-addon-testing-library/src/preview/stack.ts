@@ -33,19 +33,27 @@ export const setProjectRoot = (root: string | undefined) => {
   projectRoot = root;
 };
 
-const displayPath = (url: string) => {
+/** The file a URL from the Vite dev server was served from */
+const filePath = (url: string) => {
   let path: string;
   try {
     path = decodeURIComponent(new URL(url).pathname);
   } catch {
-    return url;
+    return undefined;
   }
   if (path.startsWith('/@fs/')) {
-    path = path.slice('/@fs'.length);
-    return projectRoot && path.startsWith(`${projectRoot}/`) ? `.${path.slice(projectRoot.length)}` : path;
+    return path.slice('/@fs'.length);
   }
   // Served from Vite's root, which is where Storybook runs
-  return `.${path}`;
+  return projectRoot ? `${projectRoot}${path}` : `.${path}`;
+};
+
+const displayPath = (url: string) => {
+  const path = filePath(url);
+  if (!path) {
+    return url;
+  }
+  return projectRoot && path.startsWith(`${projectRoot}/`) ? `.${path.slice(projectRoot.length)}` : path;
 };
 
 const maps = new Map<string, Promise<TraceMap | undefined>>();
@@ -80,7 +88,7 @@ const codeFrameFrom = (map: TraceMap, source: string, frame: StackFrame): CodeFr
   for (let number = first; number <= last; number++) {
     lines.push({ number, text: all[number - 1] ?? '' });
   }
-  return { file: frame.file, line: frame.line, column: frame.column, lines };
+  return { file: frame.file, path: frame.path, line: frame.line, column: frame.column, lines };
 };
 
 /** The frames of a stack, mapped to the source, and the code around the first frame in your own code */
@@ -89,7 +97,14 @@ export const mapStack = async (stack: string | undefined): Promise<{ frames: Sta
   let codeFrame: CodeFrame | undefined;
   for (const [index, raw] of parseStack(stack ?? '').entries()) {
     const library = isLibrary(raw.url);
-    const frame: StackFrame = { fn: raw.fn, file: displayPath(raw.url), line: raw.line, column: raw.column, library };
+    const frame: StackFrame = {
+      fn: raw.fn,
+      file: displayPath(raw.url),
+      path: library ? undefined : filePath(raw.url),
+      line: raw.line,
+      column: raw.column,
+      library,
+    };
     const map = !library && index < MAX_MAPPED_FRAMES ? await loadMap(raw.url) : undefined;
     if (map) {
       const original = originalPositionFor(map, { line: raw.line, column: raw.column - 1 });

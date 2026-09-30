@@ -23,12 +23,7 @@ export const STEP_CONTINUE = `${ADDON_ID}/step-continue`;
 export const SHOW_SNAPSHOT = `${ADDON_ID}/show-snapshot`;
 export const SNAPSHOT_SHOWN = `${ADDON_ID}/snapshot-shown`;
 
-/** Debugging: whether DevTools paused before the step that failed */
-export const DEBUG_PAUSED = `${ADDON_ID}/debug-paused`;
-
 export const VIRTUAL_SETUP_MODULE = 'virtual:storybook-addon-testing-library/setup';
-/** Holds the debugger statement a debug run stops at (see preset.ts) */
-export const VIRTUAL_DEBUGGER_MODULE = 'virtual:storybook-addon-testing-library/debugger';
 
 /** Where the proxy modules for mocked modules register, so vi.mock can swap their exports (see node/mockPlugin.ts) */
 export const MOCKED_MODULES_GLOBAL = '__TESTING_LIBRARY_ADDON_MOCKED_MODULES__';
@@ -99,6 +94,8 @@ export type StackFrame = {
   fn?: string;
   /** Relative to where Storybook runs when possible, like ./src/Button.tsx */
   file: string;
+  /** The file on disk, which the panel opens in your editor. Relative paths are relative to where Storybook runs. */
+  path?: string;
   line: number;
   column: number;
   /** Code from node_modules or the addon, which is collapsed in the panel */
@@ -107,6 +104,7 @@ export type StackFrame = {
 
 export type CodeFrame = {
   file: string;
+  path?: string;
   line: number;
   column: number;
   lines: Array<{ number: number; text: string }>;
@@ -146,11 +144,6 @@ export type RunRequest = {
   }>;
   /** Run step by step: pause before every interaction, starting at step `stopAtStep` (1-based) */
   stepByStep?: { stopAtStep?: number };
-  /**
-   * Stop in DevTools before this step (0: before the test starts) of the test with this result key, and never time
-   * out. The key picks out one case of an it.each, since every case runs under the same test id.
-   */
-  debugAt?: { key: string; step: number };
 };
 
 export type StepStatus = 'paused' | 'running' | 'ok' | 'failed';

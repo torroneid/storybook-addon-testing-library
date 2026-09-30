@@ -73,7 +73,7 @@ describe('mapStack', () => {
     );
 
     expect(frames).toEqual([
-      { fn: 'parsePrice', file: './src/Price.ts', line: 6, column: 5, library: false },
+      { fn: 'parsePrice', file: './src/Price.ts', path: './src/Price.ts', line: 6, column: 5, library: false },
       { fn: 'dispatch', file: './node_modules/.cache/sb-vite/deps/client.js', line: 10, column: 5, library: true },
     ]);
     expect(codeFrame?.line).toBe(6);
@@ -92,6 +92,25 @@ describe('mapStack', () => {
     );
 
     expect(frames[0]?.file).toBe('./src/Price.spec.ts');
+  });
+
+  it('gives the path on disk of your own files, so the panel can open them in the editor', async () => {
+    vi.stubGlobal('fetch', async () => new Response('', { status: 404 }));
+    setProjectRoot('/home/me/app');
+
+    const { frames } = await mapStack(
+      [
+        '    at parsePrice (http://localhost:6006/src/Price.ts?t=1:6:11)',
+        '    at Object.fn (http://localhost:6006/@fs/home/me/shared/Price.spec.ts?spec-tests=2:14:17)',
+        '    at dispatch (http://localhost:6006/node_modules/.cache/sb-vite/deps/client.js?v=1:10:5)',
+      ].join('\n'),
+    );
+
+    expect(frames.map(frame => frame.path)).toEqual([
+      '/home/me/app/src/Price.ts',
+      '/home/me/shared/Price.spec.ts',
+      undefined,
+    ]);
   });
 
   it('treats a deps folder in the project as the project’s code', async () => {

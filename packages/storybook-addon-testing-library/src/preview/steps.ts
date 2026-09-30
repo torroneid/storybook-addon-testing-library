@@ -5,10 +5,9 @@
  */
 import { addons } from 'storybook/preview-api';
 
-import { DEBUG_PAUSED, STEP, type StepInfo, type StepStatus } from '../shared/types.ts';
+import { STEP, type StepInfo, type StepStatus } from '../shared/types.ts';
 import { stripAnsi, display } from './formatName.ts';
 import { forgetSnapshotsFor, hasSnapshot, hideSnapshot, takeSnapshot } from './snapshots.ts';
-import { realNow } from './timers.ts';
 
 export class CancelledError extends Error {
   constructor() {
@@ -30,9 +29,6 @@ type Controller = {
   waiting?: { resume: () => void; reject: (error: Error) => void };
   /** The latest step in the current test, so an error can say where it happened */
   lastStep?: Step;
-  /** A debug run: stop in DevTools before this step (0: before the test) of the test with this key, and never time out */
-  breakAt?: { key: string; step: number };
-  debugging: boolean;
 };
 
 const g = globalThis as typeof globalThis & { __TESTING_LIBRARY_ADDON_STEPS__?: Controller };
@@ -43,7 +39,6 @@ const control: Controller = (g.__TESTING_LIBRARY_ADDON_STEPS__ ??= {
   key: '',
   number: 0,
   depth: 0,
-  debugging: false,
 });
 
 const send = (number: number, label: string, pausable: boolean, status: StepStatus, error?: unknown) => {
@@ -60,74 +55,18 @@ const send = (number: number, label: string, pausable: boolean, status: StepStat
   addons.getChannel().emit(STEP, step);
 };
 
-/** The test waits for the user, in step-by-step mode or in DevTools, so it must not time out */
-export const waitsForUser = () => control.active || control.debugging;
+/** The test waits for the user in step-by-step mode, so it must not time out */
+export const waitsForUser = () => control.active;
 
-export const startStepRun = (
-  runId: number,
-  stepByStep: { stopAtStep?: number } | undefined,
-  debugAt?: { key: string; step: number },
-) => {
+export const startStepRun = (runId: number, stepByStep: { stopAtStep?: number } | undefined) => {
   hideSnapshot();
   control.active = !!stepByStep;
   control.stopAtStep = stepByStep?.stopAtStep ?? 1;
   control.runId = runId;
   control.key = '';
-  control.breakAt = debugAt;
-  control.debugging = debugAt !== undefined;
 };
 
 export const lastStep = () => control.lastStep;
-
-// The test replaces console.error to collect what it logs (see runtime.ts)
-const nativeConsoleError = console.error;
-
-const breaksAt = (number: number) => control.breakAt?.key === control.key && control.breakAt.step === number;
-
-let pause = (_errors: unknown[]) => {
-  debugger;
-};
-
-/** The preview passes the function from the virtual debugger module (see preset.ts), which DevTools does not skip */
-export const setDebuggerStatement = (statement: (errors: unknown[]) => void) => {
-  pause = statement;
-};
-
-/** The errors of each test's latest failed run, so a debug run can show where they were thrown before it stops */
-const failures = new Map<string, unknown[]>();
-
-export const rememberFailure = (key: string, errors: unknown[]) => {
-  if (errors.length > 0) {
-    failures.set(key, errors);
-  } else {
-    failures.delete(key);
-  }
-};
-
-/** Stops in DevTools, if it is open, and tells the manager whether it did */
-const pauseInDevTools = (label: string) => {
-  control.breakAt = undefined;
-  const errors = failures.get(control.key) ?? [];
-  if (errors.length > 0) {
-    // Logged as errors, DevTools shows the stacks source-mapped: a click opens the line in Sources,
-    // where you can set a breakpoint before you resume
-    console.group(`%cstorybook-addon-testing-library: the last run failed with`, 'color: #ff4400');
-    errors.forEach(error => nativeConsoleError(error));
-    console.groupEnd();
-  }
-  const start = realNow();
-  pause(errors);
-  // Nothing measurable passes unless DevTools stopped
-  const paused = realNow() - start > 100;
-  addons.getChannel().emit(DEBUG_PAUSED, { runId: control.runId, paused, label });
-};
-
-/** In a debug run that should stop before the first step */
-export const pauseBeforeTest = () => {
-  if (breaksAt(0)) {
-    pauseInDevTools('the start of the test');
-  }
-};
 
 export const cancelStep = () => {
   control.active = false;
@@ -193,9 +132,6 @@ export const logStep = <T>(label: () => string, execute: () => T): T => {
   const text = label();
   const step: Step = (control.lastStep = { number, label: text, failed: false });
   takeSnapshot(control.key, number, undefined);
-  if (breaksAt(number)) {
-    pauseInDevTools(text);
-  }
   try {
     const result = execute();
     send(number, text, false, 'ok');
@@ -249,9 +185,6 @@ export const pausableStep = async <T>(
   }
   // If the user is looking at an earlier step, bring the canvas back to the live DOM first
   hideSnapshot();
-  if (breaksAt(number)) {
-    pauseInDevTools(text);
-  }
   send(number, text, true, 'running');
   control.depth++;
   try {
