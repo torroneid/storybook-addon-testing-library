@@ -10,6 +10,7 @@ import {
   CANCEL,
   EXIT_TEST_VIEW,
   LOG_FRAME,
+  LOG_TEST_LOCATION,
   FILE_ERROR,
   type RunRequest,
   RUN_FINISHED,
@@ -42,7 +43,7 @@ import { blockFilePickers } from './filePickers.ts';
 import { dispatchFocusEventsWithoutWindowFocus } from './focus.ts';
 import { remountStory, type StoryPreview } from './remount.ts';
 import { hideSnapshot, showSnapshot } from './snapshots.ts';
-import { logFrame, setProjectRoot } from './stack.ts';
+import { logFrame, logTestLocation, setProjectRoot } from './stack.ts';
 import { cancelStep, resumeWithoutPausing, nextStep, startStepRun } from './steps.ts';
 
 type GlobalWithPreview = typeof globalThis & {
@@ -192,6 +193,9 @@ channel.on(RUN, (request: RunRequest) => {
 });
 channel.on(CANCEL, cancel);
 channel.on(LOG_FRAME, logFrame);
+channel.on(LOG_TEST_LOCATION, (location: Parameters<typeof logTestLocation>[0]) => {
+  logTestLocation(location).catch(() => undefined);
+});
 channel.on(STEP_NEXT, () => {
   hideSnapshot();
   emitSnapshotShown('');
