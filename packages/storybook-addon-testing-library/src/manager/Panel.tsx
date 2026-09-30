@@ -3,19 +3,9 @@ import { useStorybookState } from 'storybook/manager-api';
 import { styled } from 'storybook/theming';
 
 import type { SpecFile, StaticTest, StepInfo } from '../shared/types.ts';
-import {
-  ConsoleErrors,
-  DEBUG_SHORTCUT_TEXT,
-  ErrorView,
-  IconButton,
-  Button,
-  Spinner,
-  StatusIcon,
-} from './components.tsx';
+import { ConsoleErrors, ErrorView, IconButton, Button, Spinner, StatusIcon } from './components.tsx';
 import {
   cancel,
-  closeDebug,
-  debugTest,
   isTestPending,
   previousStep,
   resumeWithoutPausing,
@@ -214,7 +204,7 @@ const TestResultRow = ({
   handling?: React.ReactNode;
 }) => {
   const [open, setOpen] = useState(false);
-  const { steps: allSteps, run } = useResults();
+  const { steps: allSteps } = useResults();
   const steps = allSteps[result.key] ?? [];
   const consoleErrors = result.consoleErrors ?? [];
   const canExpand = result.errors.length > 0 || steps.length > 0 || consoleErrors.length > 0;
@@ -229,15 +219,6 @@ const TestResultRow = ({
       </Row>
       {(open || result.status === 'failed') && canExpand && (
         <Details>
-          {result.status === 'failed' && result.staticTestId && (
-            <Button
-              disabled={!!run}
-              title={`Run the test again and stop in DevTools just before the step that failed (${DEBUG_SHORTCUT_TEXT})`}
-              onClick={() => debugTest(result)}
-            >
-              Debug in DevTools <span style={{ opacity: 0.7, fontWeight: 'normal' }}>{DEBUG_SHORTCUT_TEXT}</span>
-            </Button>
-          )}
           <ErrorView error={result.errors} testKey={result.key} />
           <ConsoleErrors messages={consoleErrors} />
           {steps.length > 0 && <StepList steps={steps} />}
@@ -335,34 +316,6 @@ const SpecFileView = ({ specFile, storyId }: { specFile: SpecFile; storyId: stri
         <TestResultRow key={r.key} result={r} onlyLastName={false} />
       ))}
     </div>
-  );
-};
-
-/**
- * What happened to a debug run: stopped in DevTools, ran through because DevTools was closed, or ended before it got
- * to the step
- */
-const DebugBanner = () => {
-  const { debug, run } = useResults();
-  if (!debug) {
-    return null;
-  }
-  const where = debug.step > 0 ? `step ${debug.step}` : 'the start of the test';
-  const text =
-    debug.paused === true
-      ? `DevTools stopped just before ${where}${debug.label && debug.step > 0 ? `: ${debug.label}` : ''}. Step out (Shift+F11) to get to that line in your spec, then step into (F11) the call to follow it into your code.`
-      : debug.paused === false
-        ? `The test did not stop, because DevTools was closed. Open DevTools (F12, or ⌥⌘I on a Mac) and debug again (${DEBUG_SHORTCUT_TEXT}). The error is also logged in its Console, with a stack you can click.`
-        : run
-          ? `Running “${formatName(debug.testName)}”, to stop in DevTools before ${where}…`
-          : `The test did not stop, because this time it never got to ${where}: it passed, failed earlier, or failed outside a step. See its result below.`;
-  return (
-    <Banner>
-      <span style={{ flex: 1 }}>{text}</span>
-      <IconButton title="Close" aria-label="Close" onClick={closeDebug}>
-        ✕
-      </IconButton>
-    </Banner>
   );
 };
 
@@ -511,7 +464,6 @@ export const Panel = () => {
           </Muted>
         )}
       </Toolbar>
-      <DebugBanner />
       <TestViewBanner />
       <StepPanel />
       {generalErrors.length > 0 && (

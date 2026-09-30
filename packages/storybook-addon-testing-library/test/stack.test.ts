@@ -73,7 +73,14 @@ describe('mapStack', () => {
     );
 
     expect(frames).toEqual([
-      { fn: 'parsePrice', file: './src/Price.ts', line: 6, column: 5, library: false },
+      {
+        fn: 'parsePrice',
+        file: './src/Price.ts',
+        line: 6,
+        column: 5,
+        library: false,
+        served: { url: 'http://localhost:6006/src/Price.ts?t=1', line: throwLine, column: throwColumn },
+      },
       { fn: 'dispatch', file: './node_modules/.cache/sb-vite/deps/client.js', line: 10, column: 5, library: true },
     ]);
     expect(codeFrame?.line).toBe(6);
@@ -92,6 +99,22 @@ describe('mapStack', () => {
     );
 
     expect(frames[0]?.file).toBe('./src/Price.spec.ts');
+  });
+
+  it('keeps where your own frames are in the served code, so they can be logged in the console', async () => {
+    vi.stubGlobal('fetch', async () => new Response('', { status: 404 }));
+
+    const { frames } = await mapStack(
+      [
+        '    at parsePrice (http://localhost:6006/src/Price.ts?t=1:6:11)',
+        '    at dispatch (http://localhost:6006/node_modules/.cache/sb-vite/deps/client.js?v=1:10:5)',
+      ].join('\n'),
+    );
+
+    expect(frames.map(frame => frame.served)).toEqual([
+      { url: 'http://localhost:6006/src/Price.ts?t=1', line: 6, column: 11 },
+      undefined,
+    ]);
   });
 
   it('treats a deps folder in the project as the project’s code', async () => {

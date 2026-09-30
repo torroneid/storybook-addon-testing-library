@@ -2,15 +2,9 @@ import React, { useState } from 'react';
 import { keyframes, styled } from 'storybook/theming';
 
 import type { CodeFrame, ErrorInfo, ErrorOrigin, StackFrame, TestStatus } from '../shared/types.ts';
-import { showSnapshot } from './store.ts';
+import { logFrameInConsole, showSnapshot } from './store.ts';
 
 const spin = keyframes({ from: { transform: 'rotate(0deg)' }, to: { transform: 'rotate(360deg)' } });
-
-const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
-
-/** Runs the last failed test again and stops in DevTools; registered in manager.tsx */
-export const DEBUG_SHORTCUT = ['alt', 'shift', 'D'];
-export const DEBUG_SHORTCUT_TEXT = isMac ? '⌥⇧D' : 'Alt+Shift+D';
 
 export const Button = styled.button<{ primary?: boolean }>(({ theme, primary }) => ({
   display: 'inline-flex',
@@ -156,9 +150,25 @@ const LineNumber = styled.span(({ theme }) => ({
 const position = (frame: { file: string; line: number; column: number }) =>
   `${frame.file}:${frame.line}:${frame.column}`;
 
+/** A position in your own code, as a link that logs it in the browser's console, where it links to the source */
+const Position = ({ frame }: { frame: StackFrame | CodeFrame }) => {
+  return frame.served ? (
+    <LinkButton
+      title="Log in the browser's console (DevTools), where a click opens it in Sources"
+      onClick={() => logFrameInConsole(frame)}
+    >
+      {position(frame)}
+    </LinkButton>
+  ) : (
+    <>{position(frame)}</>
+  );
+};
+
 const CodeFrameView = ({ codeFrame }: { codeFrame: CodeFrame }) => (
   <Code>
-    <CodeHeader>{position(codeFrame)}</CodeHeader>
+    <CodeHeader>
+      <Position frame={codeFrame} />
+    </CodeHeader>
     {codeFrame.lines.map(line => (
       <React.Fragment key={line.number}>
         <CodeLine current={line.number === codeFrame.line}>
@@ -184,7 +194,8 @@ const FrameList = ({ frames }: { frames: StackFrame[] }) => {
     <Pre as="div" style={{ background: 'transparent', padding: '4px 8px' }}>
       {shown.map((frame, index) => (
         <div key={index} style={{ opacity: frame.library ? 0.6 : 1 }}>
-          at {frame.fn ? `${frame.fn} ` : ''}({position(frame)})
+          at {frame.fn ? `${frame.fn} ` : ''}(
+          <Position frame={frame} />)
         </div>
       ))}
       {library > 0 && (

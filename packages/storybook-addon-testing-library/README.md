@@ -188,18 +188,15 @@ library Vitest's trace view uses. Click a step, or press **◀ Previous**, to se
   could not find, an error thrown in your code (in a click handler, say), an unhandled promise rejection or a timeout —
   and the step it happened in. Click the step to see the DOM just before it.
 - **The line that failed.** The stack is mapped back to your source files, and the lines around the first frame in
-  your own code are shown. Frames from libraries are folded away.
+  your own code are shown. Frames from libraries are folded away. Click a file in the stack to log that line in the
+  browser's console (open DevTools first): there DevTools links it to your source file, and a click opens it in
+  _Sources_, where you can set a breakpoint.
 - **Only your DOM.** When a query finds nothing, the DOM in the message is what the test rendered, not Storybook's
   own page.
 - **`console.error`.** Whatever the test and your components logged with `console.error`, such as React's warnings,
   is listed with the result.
-- **Debug in DevTools** — <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> (<kbd>⌥⇧D</kbd> on a Mac), or the button on a
-  failed test — runs the test again and stops in Chrome DevTools just before the step that failed. Step out
-  (<kbd>Shift</kbd>+<kbd>F11</kbd>) to get to that line in your spec, then step into (<kbd>F11</kbd>) the call to
-  follow it into your code. DevTools has to be open, and the panel tells you if it was not. Timeouts are off while
-  you debug. The shortcut can be changed under _Keyboard shortcuts_ in Storybook's settings.
 - Every failure is also logged in the preview's console, where DevTools shows the stack source-mapped and a click
-  opens the line in _Sources_.
+  opens the line in _Sources_, so you can set a breakpoint there and run the test again.
 
 ## How tests are linked to stories
 

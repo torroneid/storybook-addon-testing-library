@@ -7,6 +7,8 @@ export const STATUS_TYPE_ID = `${ADDON_ID}/status`;
 export const RUN = `${ADDON_ID}/run`;
 export const CANCEL = `${ADDON_ID}/cancel`;
 export const EXIT_TEST_VIEW = `${ADDON_ID}/exit-test-view`;
+/** Log a stack frame in the preview's console, where DevTools links it to the source */
+export const LOG_FRAME = `${ADDON_ID}/log-frame`;
 
 /** Preview → manager */
 export const RUN_STARTED = `${ADDON_ID}/run-started`;
@@ -23,12 +25,7 @@ export const STEP_CONTINUE = `${ADDON_ID}/step-continue`;
 export const SHOW_SNAPSHOT = `${ADDON_ID}/show-snapshot`;
 export const SNAPSHOT_SHOWN = `${ADDON_ID}/snapshot-shown`;
 
-/** Debugging: whether DevTools paused before the step that failed */
-export const DEBUG_PAUSED = `${ADDON_ID}/debug-paused`;
-
 export const VIRTUAL_SETUP_MODULE = 'virtual:storybook-addon-testing-library/setup';
-/** Holds the debugger statement a debug run stops at (see preset.ts) */
-export const VIRTUAL_DEBUGGER_MODULE = 'virtual:storybook-addon-testing-library/debugger';
 
 /** Where the proxy modules for mocked modules register, so vi.mock can swap their exports (see node/mockPlugin.ts) */
 export const MOCKED_MODULES_GLOBAL = '__TESTING_LIBRARY_ADDON_MOCKED_MODULES__';
@@ -95,6 +92,9 @@ export type SpecIndexState = {
 /** What kind of failure an error is, so the panel can say it in words */
 export type ErrorOrigin = 'assertion' | 'query' | 'thrown' | 'uncaught' | 'rejection' | 'timeout';
 
+/** A position in the code the browser runs, as Chrome reports it in a stack: before source maps, 1-based */
+export type ServedPosition = { url: string; line: number; column: number };
+
 export type StackFrame = {
   fn?: string;
   /** Relative to where Storybook runs when possible, like ./src/Button.tsx */
@@ -103,6 +103,8 @@ export type StackFrame = {
   column: number;
   /** Code from node_modules or the addon, which is collapsed in the panel */
   library: boolean;
+  /** Where the frame is in the served code, so the preview can log it in the console (your own code only) */
+  served?: ServedPosition;
 };
 
 export type CodeFrame = {
@@ -110,6 +112,8 @@ export type CodeFrame = {
   line: number;
   column: number;
   lines: Array<{ number: number; text: string }>;
+  fn?: string;
+  served?: ServedPosition;
 };
 
 export type ErrorInfo = {
@@ -146,11 +150,6 @@ export type RunRequest = {
   }>;
   /** Run step by step: pause before every interaction, starting at step `stopAtStep` (1-based) */
   stepByStep?: { stopAtStep?: number };
-  /**
-   * Stop in DevTools before this step (0: before the test starts) of the test with this result key, and never time
-   * out. The key picks out one case of an it.each, since every case runs under the same test id.
-   */
-  debugAt?: { key: string; step: number };
 };
 
 export type StepStatus = 'paused' | 'running' | 'ok' | 'failed';

@@ -10,8 +10,9 @@ import type { Status, StatusValue } from 'storybook/internal/types';
 import {
   ADDON_ID,
   CANCEL,
-  DEBUG_PAUSED,
   EXIT_TEST_VIEW,
+  LOG_FRAME,
+  type CodeFrame,
   type ErrorInfo,
   FILE_ERROR,
   RUN,
@@ -25,6 +26,7 @@ import {
   type SnapshotShown,
   SNAPSHOT_SHOWN,
   STATUS_TYPE_ID,
+  type StackFrame,
   type StaticTest,
   STEP,
   STEP_CONTINUE,
@@ -64,11 +66,6 @@ export type ResultState = {
   stepByStep?: { selection: SingleTestSelection; key?: string };
   /** The canvas is showing a DOM snapshot from an earlier step instead of the live DOM */
   snapshot?: { key: string; number: number };
-  /**
-   * A run that stops in DevTools before the step that failed. `paused` is known once it got there, and stays unknown
-   * if the run ended first
-   */
-  debug?: { runId: number; testName: string[]; step: number; paused?: boolean; label?: string };
 };
 
 type SingleTestSelection = Extract<RunSelection, { type: 'test' }>;
@@ -167,11 +164,7 @@ const updateStatuses = (storyIds: Iterable<string>) => {
 let api: API | undefined;
 let lastRunId = 0;
 
-export const runTests = (
-  selection: RunSelection,
-  stepByStep?: { stopAtStep?: number },
-  debug?: { key: string; step: number; testName: string[] },
-) => {
+export const runTests = (selection: RunSelection, stepByStep?: { stopAtStep?: number }) => {
   if (!api || state.run) {
     return;
   }
@@ -199,7 +192,6 @@ export const runTests = (
     fileErrors: Object.fromEntries(Object.entries(s.fileErrors).filter(([file]) => !filesInSelection.has(file))),
     run: { runId, selection, started: false, completed: 0 },
     stepByStep: stepByStep && selection.type === 'test' ? { selection } : undefined,
-    debug: debug && selection.type === 'test' ? { runId, testName: debug.testName, step: debug.step } : undefined,
   }));
   statusStore.set(
     [...new Set(affectedStoryIds)].map(storyId => ({
@@ -223,7 +215,6 @@ export const runTests = (
       selectedTestIds: selection.type === 'all' || selection.type === 'file' ? undefined : tests.map(test => test.id),
     })),
     stepByStep: selection.type === 'test' ? stepByStep : undefined,
-    debugAt: debug && selection.type === 'test' ? { key: debug.key, step: debug.step } : undefined,
   };
   // The preview may not have loaded yet, so repeat the request until the run starts (the preview ignores duplicates).
   const managerApi = api;
@@ -316,35 +307,8 @@ export const closeStepByStep = () => {
   setState(s => ({ ...s, stepByStep: undefined }));
 };
 
-// ---------- Debugging in DevTools ----------
-
-/** Runs the test again and stops in DevTools just before the step where it failed */
-export const debugTest = (result: TestResult) => {
-  if (!result.staticTestId) {
-    return;
-  }
-  const step = result.errors.find(error => error.step)?.step?.number ?? 0;
-  runTests({ type: 'test', file: result.file, testId: result.staticTestId }, undefined, {
-    key: result.key,
-    step,
-    testName: result.name,
-  });
-};
-
-/** The most recent failed test that can be run on its own, preferring those that use the given story */
-export const lastFailure = (storyId?: string) => {
-  const failed = Object.values(state.results).filter(result => result.status === 'failed' && result.staticTestId);
-  return failed.filter(result => storyId && result.storyIds.includes(storyId)).at(-1) ?? failed.at(-1);
-};
-
-export const debugLastFailure = (storyId?: string) => {
-  const result = lastFailure(storyId);
-  if (result && !state.run) {
-    debugTest(result);
-  }
-};
-
-export const closeDebug = () => setState(s => ({ ...s, debug: undefined }));
+/** Logs a frame of a stack in the preview's console, where DevTools links it to the source file */
+export const logFrameInConsole = (frame: StackFrame | CodeFrame) => api?.emit(LOG_FRAME, frame);
 
 export const clearResults = () => {
   setState(s => ({ ...s, results: {}, fileErrors: {}, steps: {}, lastRun: undefined }));
@@ -432,10 +396,6 @@ export const connectToPreview = (managerApi: API) => {
       pendingRestart = undefined;
       runTests(selection, { stopAtStep });
     }
-  });
-
-  managerApi.on(DEBUG_PAUSED, ({ runId, paused, label }: { runId: number; paused: boolean; label: string }) => {
-    setState(s => (s.debug?.runId === runId ? { ...s, debug: { ...s.debug, paused, label } } : s));
   });
 
   managerApi.on(SNAPSHOT_SHOWN, ({ key, number }: SnapshotShown) => {

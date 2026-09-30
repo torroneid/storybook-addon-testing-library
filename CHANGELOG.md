@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Click a file in a failed test's stack, or above the code shown, to log that line in the browser's console. DevTools
+  links it to the source file there, and a click opens it in _Sources_.
+- Removed **Debug in DevTools** and its shortcut (Alt+Shift+D). It stopped in DevTools before the step that failed,
+  and from there the code that threw was hard to reach. The failures are still logged in the preview's console, where
+  DevTools maps the stack to your files and a click opens the line in _Sources_.
+
 ## 0.2.1
 
 - Fix "cannot render when canvasElement is unset" when running tests after the same story was selected twice in quick

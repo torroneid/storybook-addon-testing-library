@@ -4,12 +4,12 @@
  */
 import { STORY_CHANGED } from 'storybook/internal/core-events';
 import { addons } from 'storybook/preview-api';
-import { pause } from 'virtual:storybook-addon-testing-library/debugger';
 import { setupFiles } from 'virtual:storybook-addon-testing-library/setup';
 
 import {
   CANCEL,
   EXIT_TEST_VIEW,
+  LOG_FRAME,
   FILE_ERROR,
   type RunRequest,
   RUN_FINISHED,
@@ -42,8 +42,8 @@ import { blockFilePickers } from './filePickers.ts';
 import { dispatchFocusEventsWithoutWindowFocus } from './focus.ts';
 import { remountStory, type StoryPreview } from './remount.ts';
 import { hideSnapshot, showSnapshot } from './snapshots.ts';
-import { setProjectRoot } from './stack.ts';
-import { cancelStep, resumeWithoutPausing, nextStep, setDebuggerStatement, startStepRun } from './steps.ts';
+import { logFrame, setProjectRoot } from './stack.ts';
+import { cancelStep, resumeWithoutPausing, nextStep, startStepRun } from './steps.ts';
 
 type GlobalWithPreview = typeof globalThis & {
   __TESTING_LIBRARY_ADDON_VITEST__?: typeof vitestApi;
@@ -60,8 +60,6 @@ for (const [name, value] of Object.entries(vitestApi)) {
     Object.defineProperty(g, name, { value: value, configurable: true, writable: true });
   }
 }
-
-setDebuggerStatement(pause);
 
 const channel = addons.getChannel();
 
@@ -108,7 +106,7 @@ const projectRootOf = (file: RunRequest['files'][number] | undefined) => {
   return absolute && relative && absolute.endsWith(relative) ? absolute.slice(0, -relative.length) : undefined;
 };
 
-const run = async ({ runId, storyId, files, stepByStep, debugAt }: RunRequest) => {
+const run = async ({ runId, storyId, files, stepByStep }: RunRequest) => {
   // The manager repeats the request until the run has started
   if (runId <= lastRunId || (abortController && !abortController.signal.aborted)) {
     return;
@@ -120,7 +118,7 @@ const run = async ({ runId, storyId, files, stepByStep, debugAt }: RunRequest) =
   const restoreFocus = dispatchFocusEventsWithoutWindowFocus();
   const restoreFilePickers = blockFilePickers();
   let lastTest: RunFinished['lastTest'];
-  startStepRun(runId, stepByStep, debugAt);
+  startStepRun(runId, stepByStep);
   setProjectRoot(projectRootOf(files[0]));
   channel.emit(RUN_STARTED, { runId });
 
@@ -193,6 +191,7 @@ channel.on(RUN, (request: RunRequest) => {
   run(request).catch(() => undefined);
 });
 channel.on(CANCEL, cancel);
+channel.on(LOG_FRAME, logFrame);
 channel.on(STEP_NEXT, () => {
   hideSnapshot();
   emitSnapshotShown('');

@@ -19,7 +19,7 @@ import { formatName, stripAnsi, display } from './formatName.ts';
 import { createLoggingExpect } from './loggingExpect.ts';
 import { applyMocks, moduleMocks, recordMocks, restoreModules, settleMocks } from './mocks.ts';
 import { mapStack } from './stack.ts';
-import { CancelledError, endTestSteps, lastStep, pauseBeforeTest, startTestSteps, waitsForUser } from './steps.ts';
+import { CancelledError, endTestSteps, lastStep, startTestSteps, waitsForUser } from './steps.ts';
 import * as timers from './timers.ts';
 import { realClearTimeout, realDateNow, realNow, realSetTimeout, resetTimers } from './timers.ts';
 
@@ -360,7 +360,7 @@ export const describeError = async (error: unknown, extra: Pick<ErrorInfo, 'orig
  * `onTimeout` aborts the test's signal, so code that listens to it can stop.
  */
 const withTimeout = async (value: unknown, ms: number, label: string, onTimeout?: (error: Error) => void) => {
-  // A test paused for the user, step by step or in DevTools, must not time out
+  // A test paused for the user, step by step, must not time out
   if (!(value instanceof Promise) || waitsForUser()) {
     return value;
   }
@@ -474,7 +474,6 @@ const runTest = async (test: Test, name: string[], inheritedErrors: unknown[], s
   try {
     if (errors.length === 0) {
       try {
-        pauseBeforeTest();
         for (const suite of chain) {
           for (const beforeEachHook of suite.beforeEach) {
             const cleanup = await withTimeout(beforeEachHook(context), timeout, 'beforeEach', abortTest);

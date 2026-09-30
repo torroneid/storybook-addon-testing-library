@@ -5,7 +5,7 @@
  */
 import { originalPositionFor, sourceContentFor, TraceMap } from '@jridgewell/trace-mapping';
 
-import type { CodeFrame, StackFrame } from '../shared/types.ts';
+import type { CodeFrame, ServedPosition, StackFrame } from '../shared/types.ts';
 
 type RawFrame = { fn?: string; url: string; line: number; column: number };
 
@@ -80,7 +80,7 @@ const codeFrameFrom = (map: TraceMap, source: string, frame: StackFrame): CodeFr
   for (let number = first; number <= last; number++) {
     lines.push({ number, text: all[number - 1] ?? '' });
   }
-  return { file: frame.file, line: frame.line, column: frame.column, lines };
+  return { file: frame.file, line: frame.line, column: frame.column, lines, fn: frame.fn, served: frame.served };
 };
 
 /** The frames of a stack, mapped to the source, and the code around the first frame in your own code */
@@ -89,7 +89,14 @@ export const mapStack = async (stack: string | undefined): Promise<{ frames: Sta
   let codeFrame: CodeFrame | undefined;
   for (const [index, raw] of parseStack(stack ?? '').entries()) {
     const library = isLibrary(raw.url);
-    const frame: StackFrame = { fn: raw.fn, file: displayPath(raw.url), line: raw.line, column: raw.column, library };
+    const frame: StackFrame = {
+      fn: raw.fn,
+      file: displayPath(raw.url),
+      line: raw.line,
+      column: raw.column,
+      library,
+      served: library ? undefined : { url: raw.url, line: raw.line, column: raw.column },
+    };
     const map = !library && index < MAX_MAPPED_FRAMES ? await loadMap(raw.url) : undefined;
     if (map) {
       const original = originalPositionFor(map, { line: raw.line, column: raw.column - 1 });
@@ -102,4 +109,27 @@ export const mapStack = async (stack: string | undefined): Promise<{ frames: Sta
     frames.push(frame);
   }
   return { frames, codeFrame };
+};
+
+/**
+ * Logs a frame in the console as an error with only that frame in its stack. DevTools maps the stack with the
+ * served code's source map, so the line links to the source file, and a click opens it in Sources.
+ */
+export const logFrame = ({
+  fn,
+  file,
+  line,
+  column,
+  served,
+}: {
+  fn?: string;
+  file: string;
+  line: number;
+  column: number;
+  served: ServedPosition;
+}) => {
+  const error = new Error(`${file}:${line}:${column}`);
+  error.name = 'storybook-addon-testing-library';
+  error.stack = `${error.name}: ${error.message}\n    at ${fn ?? '<anonymous>'} (${served.url}:${served.line}:${served.column})`;
+  console.log(error);
 };
