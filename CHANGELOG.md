@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.1
+
+- Fix "cannot render when canvasElement is unset" when running tests after the same story was selected twice in quick
+  succession. Storybook 10.6 can keep a render of the story that never got a canvas, and the addon remounted it when it
+  hid the story. The addon now remounts only the renders that are in the canvas.
+- Keep `userEvent.upload` from opening the browser's file picker. When a component clicks its file input itself, like
+  a dropzone does, the click from the upload opened the file picker in the middle of the run. While tests run,
+  `click()` and `showPicker()` on a file input now do nothing, as in jsdom.
+- Fix `expect.any(...)` inside `expect.objectContaining(...)`, which never matched and showed `Any<sample>`.
+  Storybook instruments the `expect` in `storybook/test` for the Interactions panel, and that replaced the `String` in
+  `expect.any(String)` with a wrapper. The addon now uses the `expect` underneath, since it logs its own steps.
+
 ## 0.2.0
 
 - `vi.mock`, `vi.doMock`, `vi.unmock`, `vi.hoisted`, `vi.importActual` and `vi.importMock` in specs and setup files.

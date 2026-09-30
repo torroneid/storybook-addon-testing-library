@@ -202,9 +202,17 @@ export const onTestFailed = (fn: Hook) => {
   currentContext.onTestFailed(fn);
 };
 
+/**
+ * storybook/test instruments expect for the Interactions panel, and the instrumenter replaces every function it finds
+ * in the values expect returns. expect.objectContaining(sample) returns its sample, so in
+ * expect.objectContaining({ id: expect.any(String) }) String became a wrapper and the matcher never matched.
+ * The addon logs its own steps, so it uses the expect underneath.
+ */
+const baseExpect = (expect as typeof expect & { __originalFn__?: typeof expect }).__originalFn__ ?? expect;
+
 // Both the imported and the global expect in spec files should be logged as steps
 const loggingExpect = createLoggingExpect(
-  expect as unknown as (...args: unknown[]) => unknown,
+  baseExpect as unknown as (...args: unknown[]) => unknown,
 ) as unknown as typeof expect;
 
 /** Like in Vitest, the functions that change state return vi, so calls can be chained */
@@ -454,7 +462,7 @@ const runTest = async (test: Test, name: string[], inheritedErrors: unknown[], s
     nativeConsoleError.apply(console, args);
   };
   currentContext = context;
-  expect.setState({
+  baseExpect.setState({
     assertionCalls: 0,
     isExpectingAssertions: false,
     isExpectingAssertionsError: null,
@@ -478,7 +486,7 @@ const runTest = async (test: Test, name: string[], inheritedErrors: unknown[], s
         // vi.mock in a beforeEach hook may have an async factory
         await settleMocks();
         await withTimeout(test.fn(context), timeout, 'The test', abortTest);
-        const state = expect.getState();
+        const state = baseExpect.getState();
         if (state.expectedAssertionsNumber !== null && state.assertionCalls !== state.expectedAssertionsNumber) {
           fail(state.expectedAssertionsNumberErrorGen?.());
         }
