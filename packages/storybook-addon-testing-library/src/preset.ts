@@ -61,9 +61,13 @@ const setupPlugin = (setupFiles: string[]): Plugin => {
  * the Call Stack, so stepping out lands in the spec.
  */
 const DEBUGGER_SOURCE = `// storybook-addon-testing-library stopped here, just before the step that failed.
-// Step out (Shift+F11) to get to that step in your spec. From there, step into (F11) the call to follow it into
-// your code, or step over (F10) until the error is thrown.
-export const pause = () => {
+//
+// Where the error was thrown: the last run's errors are logged in the Console, and \`errors\` in Scope holds them.
+// Click a line of the stack in the Console (Esc opens it below this panel) to open it in your code, set a
+// breakpoint there and resume (F8). The test runs on and stops at your breakpoint.
+//
+// Or step out (Shift+F11) to get to the step in your spec, and step over (F10) or into (F11) from there.
+export const pause = errors => {
   debugger;
 };
 `;

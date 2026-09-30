@@ -79,22 +79,44 @@ export const startStepRun = (
 
 export const lastStep = () => control.lastStep;
 
+// The test replaces console.error to collect what it logs (see runtime.ts)
+const nativeConsoleError = console.error;
+
 const breaksAt = (number: number) => control.breakAt?.key === control.key && control.breakAt.step === number;
 
-let pause = () => {
+let pause = (_errors: unknown[]) => {
   debugger;
 };
 
 /** The preview passes the function from the virtual debugger module (see preset.ts), which DevTools does not skip */
-export const setDebuggerStatement = (statement: () => void) => {
+export const setDebuggerStatement = (statement: (errors: unknown[]) => void) => {
   pause = statement;
+};
+
+/** The errors of each test's latest failed run, so a debug run can show where they were thrown before it stops */
+const failures = new Map<string, unknown[]>();
+
+export const rememberFailure = (key: string, errors: unknown[]) => {
+  if (errors.length > 0) {
+    failures.set(key, errors);
+  } else {
+    failures.delete(key);
+  }
 };
 
 /** Stops in DevTools, if it is open, and tells the manager whether it did */
 const pauseInDevTools = (label: string) => {
   control.breakAt = undefined;
+  const errors = failures.get(control.key) ?? [];
+  if (errors.length > 0) {
+    // Logged as errors, DevTools shows the stacks source-mapped: a click opens the line in Sources,
+    // where you can set a breakpoint before you resume
+    console.group(`%cstorybook-addon-testing-library: the last run failed with`, 'color: #ff4400');
+    errors.forEach(error => nativeConsoleError(error));
+    console.groupEnd();
+  }
   const start = realNow();
-  pause();
+  pause(errors);
   // Nothing measurable passes unless DevTools stopped
   const paused = realNow() - start > 100;
   addons.getChannel().emit(DEBUG_PAUSED, { runId: control.runId, paused, label });

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Debug in DevTools now shows where the error was thrown. Before it stops, the debug run logs the errors from the
+  test's last run in the Console, where DevTools maps the stacks to your source files: click the line in your code, set
+  a breakpoint and resume (F8), and the test stops there. Before, it only stopped ahead of the step that failed, and
+  getting from there to an error in a component meant stepping through the addon and all of user-event.
+
 ## 0.2.1
 
 - Fix "cannot render when canvasElement is unset" when running tests after the same story was selected twice in quick

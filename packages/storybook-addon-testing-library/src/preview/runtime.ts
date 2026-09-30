@@ -19,7 +19,15 @@ import { formatName, stripAnsi, display } from './formatName.ts';
 import { createLoggingExpect } from './loggingExpect.ts';
 import { applyMocks, moduleMocks, recordMocks, restoreModules, settleMocks } from './mocks.ts';
 import { mapStack } from './stack.ts';
-import { CancelledError, endTestSteps, lastStep, pauseBeforeTest, startTestSteps, waitsForUser } from './steps.ts';
+import {
+  CancelledError,
+  endTestSteps,
+  lastStep,
+  pauseBeforeTest,
+  rememberFailure,
+  startTestSteps,
+  waitsForUser,
+} from './steps.ts';
 import * as timers from './timers.ts';
 import { realClearTimeout, realDateNow, realNow, realSetTimeout, resetTimers } from './timers.ts';
 
@@ -527,6 +535,7 @@ const runTest = async (test: Test, name: string[], inheritedErrors: unknown[], s
 
   const durationMs = realNow() - start;
   const status = skipped ? 'skipped' : errors.length > 0 ? 'failed' : 'passed';
+  rememberFailure(run.key(name), status === 'failed' ? errors : []);
   if (status === 'failed') {
     // In the preview's console, DevTools shows the stacks source-mapped, and a click opens the line in Sources
     console.groupCollapsed(`%c✗ ${name.join(' › ')}`, 'color: #ff4400');

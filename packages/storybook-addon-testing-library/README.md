@@ -194,10 +194,12 @@ library Vitest's trace view uses. Click a step, or press **◀ Previous**, to se
 - **`console.error`.** Whatever the test and your components logged with `console.error`, such as React's warnings,
   is listed with the result.
 - **Debug in DevTools** — <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> (<kbd>⌥⇧D</kbd> on a Mac), or the button on a
-  failed test — runs the test again and stops in Chrome DevTools just before the step that failed. Step out
-  (<kbd>Shift</kbd>+<kbd>F11</kbd>) to get to that line in your spec, then step into (<kbd>F11</kbd>) the call to
-  follow it into your code. DevTools has to be open, and the panel tells you if it was not. Timeouts are off while
-  you debug. The shortcut can be changed under _Keyboard shortcuts_ in Storybook's settings.
+  failed test — runs the test again and stops in Chrome DevTools just before the step that failed. Just before it
+  stops, the errors from the last run are logged in the Console, with source-mapped stacks: click the line in your
+  code where the error was thrown, set a breakpoint there and resume (<kbd>F8</kbd>), and the test stops at it. Or
+  step out (<kbd>Shift</kbd>+<kbd>F11</kbd>) to get to the step in your spec. DevTools has to be open, and the panel
+  tells you if it was not. Timeouts are off while you debug. The shortcut can be changed under _Keyboard shortcuts_ in
+  Storybook's settings.
 - Every failure is also logged in the preview's console, where DevTools shows the stack source-mapped and a click
   opens the line in _Sources_.
 

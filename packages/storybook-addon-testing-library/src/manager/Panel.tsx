@@ -350,7 +350,7 @@ const DebugBanner = () => {
   const where = debug.step > 0 ? `step ${debug.step}` : 'the start of the test';
   const text =
     debug.paused === true
-      ? `DevTools stopped just before ${where}${debug.label && debug.step > 0 ? `: ${debug.label}` : ''}. Step out (Shift+F11) to get to that line in your spec, then step into (F11) the call to follow it into your code.`
+      ? `DevTools stopped just before ${where}${debug.label && debug.step > 0 ? `: ${debug.label}` : ''}. The Console there shows where the last run's error was thrown: click the stack to open the line, set a breakpoint and resume (F8).`
       : debug.paused === false
         ? `The test did not stop, because DevTools was closed. Open DevTools (F12, or ⌥⌘I on a Mac) and debug again (${DEBUG_SHORTCUT_TEXT}). The error is also logged in its Console, with a stack you can click.`
         : run

@@ -3,5 +3,5 @@ declare module 'virtual:storybook-addon-testing-library/setup' {
 }
 
 declare module 'virtual:storybook-addon-testing-library/debugger' {
-  export const pause: () => void;
+  export const pause: (errors: unknown[]) => void;
 }
