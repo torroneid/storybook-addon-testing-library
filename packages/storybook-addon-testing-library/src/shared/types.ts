@@ -9,6 +9,12 @@ export const CANCEL = `${ADDON_ID}/cancel`;
 export const EXIT_TEST_VIEW = `${ADDON_ID}/exit-test-view`;
 /** Log a stack frame in the preview's console, where DevTools links it to the source */
 export const LOG_FRAME = `${ADDON_ID}/log-frame`;
+/** Log where a test is in its spec file in the preview's console */
+export const LOG_TEST_LOCATION = `${ADDON_ID}/log-test-location`;
+
+/** Server → manager: source files in the project changed, so earlier results may be out of date */
+export const FILES_CHANGED = `${ADDON_ID}/files-changed`;
+export type FilesChanged = { files: string[] };
 
 /** Preview → manager */
 export const RUN_STARTED = `${ADDON_ID}/run-started`;
@@ -135,7 +141,8 @@ export type RunSelection =
   | { type: 'all' }
   | { type: 'stories'; storyIds: string[] }
   | { type: 'file'; file: string }
-  | { type: 'test'; file: string; testId: string };
+  | { type: 'test'; file: string; testId: string }
+  | { type: 'tests'; tests: Array<{ file: string; testId: string }> };
 
 export type RunRequest = {
   runId: number;

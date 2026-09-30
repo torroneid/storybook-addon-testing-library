@@ -4,6 +4,7 @@ import {
   experimental_getStatusStore,
   experimental_UniversalStore,
   experimental_useUniversalStore,
+  internal_universalStatusStore,
 } from 'storybook/manager-api';
 import type { Status, StatusValue } from 'storybook/internal/types';
 
@@ -12,9 +13,12 @@ import {
   CANCEL,
   EXIT_TEST_VIEW,
   LOG_FRAME,
+  LOG_TEST_LOCATION,
   type CodeFrame,
   type ErrorInfo,
   FILE_ERROR,
+  FILES_CHANGED,
+  type FilesChanged,
   RUN,
   type RunRequest,
   type RunSelection,
@@ -66,16 +70,77 @@ export type ResultState = {
   stepByStep?: { selection: SingleTestSelection; key?: string };
   /** The canvas is showing a DOM snapshot from an earlier step instead of the live DOM */
   snapshot?: { key: string; number: number };
+  /** When source files last changed. Results from runs that started before are out of date. */
+  codeChangedAt?: number;
+  /** Re-run the open story's tests when source files change */
+  watch: boolean;
+  /** List only the tests that failed */
+  onlyFailed: boolean;
 };
 
 type SingleTestSelection = Extract<RunSelection, { type: 'test' }>;
 
-let state: ResultState = { results: {}, fileErrors: {}, steps: {} };
+// ---------- Kept across reloads of the page ----------
+
+// Results for this tab, so they survive a reload of Storybook. Settings are kept for every tab.
+const RESULTS_KEY = `${ADDON_ID}/results`;
+const SETTINGS_KEY = `${ADDON_ID}/settings`;
+
+type SavedResults = Pick<ResultState, 'results' | 'fileErrors' | 'steps' | 'lastRun' | 'codeChangedAt'>;
+type Settings = Pick<ResultState, 'watch' | 'onlyFailed'>;
+
+const read = <T>(storage: () => Storage, key: string): Partial<T> => {
+  try {
+    return JSON.parse(storage().getItem(key) ?? '{}') as Partial<T>;
+  } catch {
+    return {};
+  }
+};
+
+const write = (storage: () => Storage, key: string, value: unknown) => {
+  try {
+    storage().setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage can be full or blocked; the results are then only kept until the page reloads
+  }
+};
+
+const restore = (): ResultState => {
+  const saved = read<SavedResults>(() => sessionStorage, RESULTS_KEY);
+  const settings = read<Settings>(() => localStorage, SETTINGS_KEY);
+  // The preview reloads with the page, so the DOM snapshots it kept are gone
+  const steps = Object.fromEntries(
+    Object.entries(saved.steps ?? {}).map(([key, list]) => [key, list.map(s => ({ ...s, hasSnapshot: false }))]),
+  );
+  return {
+    results: saved.results ?? {},
+    fileErrors: saved.fileErrors ?? {},
+    steps,
+    lastRun: saved.lastRun,
+    codeChangedAt: saved.codeChangedAt,
+    watch: settings.watch ?? false,
+    onlyFailed: settings.onlyFailed ?? false,
+  };
+};
+
+let state: ResultState = restore();
 const listeners = new Set<() => void>();
+
+let saveTimeout: ReturnType<typeof setTimeout> | undefined;
+const save = () => {
+  clearTimeout(saveTimeout);
+  // Steps arrive one by one during a run, so writes are batched
+  saveTimeout = setTimeout(() => {
+    const { results, fileErrors, steps, lastRun, codeChangedAt, watch, onlyFailed } = state;
+    write(() => sessionStorage, RESULTS_KEY, { results, fileErrors, steps, lastRun, codeChangedAt });
+    write(() => localStorage, SETTINGS_KEY, { watch, onlyFailed });
+  }, 500);
+};
 
 const setState = (change: (s: ResultState) => ResultState) => {
   state = change(state);
   listeners.forEach(listener => listener());
+  save();
 };
 
 export const useResults = () =>
@@ -97,6 +162,8 @@ export const isTestInSelection = (selection: RunSelection, specFile: SpecFile, t
       return selection.file === specFile.file && selection.testId === test.id;
     case 'stories':
       return test.storyIds.some(id => selection.storyIds.includes(id));
+    case 'tests':
+      return selection.tests.some(t => t.file === specFile.file && t.testId === test.id);
   }
 };
 
@@ -109,6 +176,10 @@ export const testsInSelection = (specFiles: SpecFile[], selection: RunSelection)
 
 export const isTestPending = (s: ResultState, specFile: SpecFile, test: StaticTest, result: TestResult[]) =>
   !!s.run && isTestInSelection(s.run.selection, specFile, test) && !result.some(r => r.runId === s.run?.runId);
+
+/** The result is from a run that started before source files last changed */
+export const isStale = (s: Pick<ResultState, 'codeChangedAt'>, result: TestResult) =>
+  s.codeChangedAt !== undefined && result.runId < s.codeChangedAt;
 
 export const summarize = (result: TestResult[]) => ({
   ok: result.filter(r => r.status === 'passed').length,
@@ -310,6 +381,84 @@ export const closeStepByStep = () => {
 /** Logs a frame of a stack in the preview's console, where DevTools links it to the source file */
 export const logFrameInConsole = (frame: StackFrame | CodeFrame) => api?.emit(LOG_FRAME, frame);
 
+/** Logs where a test is in its spec file in the preview's console, where DevTools links it to Sources */
+export const logTestLocation = (specFile: SpecFile, test: StaticTest) =>
+  api?.emit(LOG_TEST_LOCATION, {
+    importPath: specFile.importPath,
+    file: specFile.file,
+    line: test.line,
+    name: test.name.map(part => part.text).join(' › '),
+  });
+
+// ---------- Failures ----------
+
+/** The tests that failed, once each (an it.each gives several results for one test), optionally for one story */
+export const failedTests = (s: ResultState, storyId?: string) => {
+  const tests = new Map<string, { file: string; testId: string }>();
+  for (const result of Object.values(s.results)) {
+    if (result.status === 'failed' && result.staticTestId && (!storyId || result.storyIds.includes(storyId))) {
+      tests.set(`${result.file}|${result.staticTestId}`, { file: result.file, testId: result.staticTestId });
+    }
+  }
+  return [...tests.values()];
+};
+
+export const rerunFailed = (storyId?: string) => {
+  const tests = failedTests(state, storyId);
+  if (tests.length > 0) {
+    runTests({ type: 'tests', tests });
+  }
+};
+
+/** The stories with failed tests, in the order of the spec files and the tests in them */
+export const failingStoryIds = (s: ResultState) => {
+  const failed = Object.values(s.results).filter(r => r.status === 'failed');
+  const ids: string[] = [];
+  for (const specFile of indexStore.getState().specFiles) {
+    for (const test of specFile.tests) {
+      if (failed.some(r => r.file === specFile.file && r.staticTestId === test.id)) {
+        ids.push(...test.storyIds.filter(id => !ids.includes(id)));
+      }
+    }
+  }
+  return ids;
+};
+
+/** The next story with a failed test after this one, starting over at the first */
+export const nextFailingStory = (s: ResultState, currentStoryId?: string) => {
+  const ids = failingStoryIds(s);
+  const index = currentStoryId ? ids.indexOf(currentStoryId) : -1;
+  return ids[(index + 1) % ids.length];
+};
+
+// ---------- Settings ----------
+
+export const setWatch = (watch: boolean) => setState(s => ({ ...s, watch }));
+
+export const setOnlyFailed = (onlyFailed: boolean) => setState(s => ({ ...s, onlyFailed }));
+
+// ---------- Re-running when the code changes ----------
+
+let watchTimeout: ReturnType<typeof setTimeout> | undefined;
+let watchRunPending = false;
+
+/** Runs the open story's tests again, after a change, once no run is going on */
+const runWatched = () => {
+  const story = api?.getCurrentStoryData();
+  if (!state.watch || story?.type !== 'story') {
+    return;
+  }
+  if (state.run) {
+    watchRunPending = true;
+    return;
+  }
+  watchRunPending = false;
+  const hasTests = indexStore.getState().specFiles.some(f => f.tests.some(t => t.storyIds.includes(story.id)));
+  if (hasTests) {
+    runTests({ type: 'stories', storyIds: [story.id] });
+  }
+};
+
 export const clearResults = () => {
   setState(s => ({ ...s, results: {}, fileErrors: {}, steps: {}, lastRun: undefined }));
   statusStore.unset();
@@ -317,6 +466,20 @@ export const clearResults = () => {
 
 export const connectToPreview = (managerApi: API) => {
   api = managerApi;
+  // The results kept from before the reload show in the sidebar too, once its status store can take them
+  internal_universalStatusStore
+    .untilReady()
+    .then(() => updateStatuses(Object.values(state.results).flatMap(r => r.storyIds)))
+    .catch(() => undefined);
+
+  managerApi.on(FILES_CHANGED, (_changed: FilesChanged) => {
+    setState(s => ({ ...s, codeChangedAt: Date.now() }));
+    if (state.watch) {
+      // The index of spec files updates after a change too, so wait for it
+      clearTimeout(watchTimeout);
+      watchTimeout = setTimeout(runWatched, 500);
+    }
+  });
 
   managerApi.on(RUN_STARTED, ({ runId }: { runId: number }) => {
     if (state.run?.runId === runId) {
@@ -395,6 +558,8 @@ export const connectToPreview = (managerApi: API) => {
       const { selection, stopAtStep } = pendingRestart;
       pendingRestart = undefined;
       runTests(selection, { stopAtStep });
+    } else if (watchRunPending) {
+      runWatched();
     }
   });
 

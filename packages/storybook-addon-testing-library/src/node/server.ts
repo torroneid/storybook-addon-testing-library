@@ -2,9 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { experimental_UniversalStore } from 'storybook/internal/core-server';
 import { logger } from 'storybook/internal/node-logger';
+import type { Channel } from 'storybook/internal/channels';
 import type { Options } from 'storybook/internal/types';
 
-import { ADDON_ID, type SpecIndexState } from '../shared/types.ts';
+import { ADDON_ID, FILES_CHANGED, type FilesChanged, type SpecIndexState } from '../shared/types.ts';
 import {
   analyzeAndLinkSpecFile,
   findPackageRoot,
@@ -16,15 +17,21 @@ import {
 
 export const DEFAULT_SPEC_PATTERNS = ['**/*.spec.{ts,tsx}', '**/*.test.{ts,tsx}'];
 
+/** Files whose changes can change a test's result. Dotfiles are left out, like an editor's swap files. */
+export const isSourceFile = (fileName: string) =>
+  !fileName.split(/[\\/]/).some(part => part.startsWith('.') || part === 'node_modules') &&
+  /\.(m?[jt]sx?|css|scss|sass|less|json|svg|html)$/.test(fileName);
+
 type StoryIndexGenerator = {
   getIndex: () => Promise<Parameters<typeof createStoryLookup>[0]>;
   onInvalidated: (listener: () => void) => void;
 };
 
 /**
- * Keeps an index of spec files and the stories their tests use, and shares it with the manager.
+ * Keeps an index of spec files and the stories their tests use, and shares it with the manager. Tells the manager
+ * when source files change, so it can show which results are out of date.
  */
-export const startSpecIndex = async (options: Options, specPatterns: string[]) => {
+export const startSpecIndex = async (options: Options, specPatterns: string[], channel?: Channel) => {
   const workingDir = process.cwd();
   const storyIndexGenerator = (await options.presets.apply('storyIndexGenerator')) as StoryIndexGenerator;
 
@@ -36,6 +43,19 @@ export const startSpecIndex = async (options: Options, specPatterns: string[]) =
 
   let storyLookup: StoryLookup = createStoryLookup({ entries: {} }, workingDir);
   const watchers = new Map<string, fs.FSWatcher>();
+
+  // Changes come in bursts (an editor saving, a formatter running), so they are sent together
+  let changed = new Set<string>();
+  let changedTimeout: NodeJS.Timeout | undefined;
+  const reportChange = (absoluteFile: string) => {
+    changed.add(toRelativePath(absoluteFile, workingDir));
+    clearTimeout(changedTimeout);
+    changedTimeout = setTimeout(() => {
+      const payload: FilesChanged = { files: [...changed] };
+      changed = new Set();
+      channel?.emit(FILES_CHANGED, payload);
+    }, 300);
+  };
 
   const updateSpecFile = (absoluteFile: string) => {
     const file = toRelativePath(absoluteFile, workingDir);
@@ -52,10 +72,14 @@ export const startSpecIndex = async (options: Options, specPatterns: string[]) =
     for (const packageRoot of packageRoots.filter(root => !watchers.has(root))) {
       const pending = new Map<string, NodeJS.Timeout>();
       const watcher = fs.watch(packageRoot, { recursive: true }, (_event, fileName) => {
-        if (!fileName || fileName.includes('node_modules') || !specPatterns.some(m => path.matchesGlob(fileName, m))) {
+        if (!fileName || !isSourceFile(fileName)) {
           return;
         }
         const absoluteFile = path.join(packageRoot, fileName);
+        reportChange(absoluteFile);
+        if (!specPatterns.some(m => path.matchesGlob(fileName, m))) {
+          return;
+        }
         clearTimeout(pending.get(absoluteFile));
         pending.set(
           absoluteFile,
