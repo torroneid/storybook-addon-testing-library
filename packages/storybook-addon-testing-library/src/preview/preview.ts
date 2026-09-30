@@ -38,7 +38,9 @@ import {
   endFile,
   vitestApi,
 } from './runtime.ts';
+import { blockFilePickers } from './filePickers.ts';
 import { dispatchFocusEventsWithoutWindowFocus } from './focus.ts';
+import { remountStory, type StoryPreview } from './remount.ts';
 import { hideSnapshot, showSnapshot } from './snapshots.ts';
 import { setProjectRoot } from './stack.ts';
 import { cancelStep, resumeWithoutPausing, nextStep, setDebuggerStatement, startStepRun } from './steps.ts';
@@ -46,7 +48,7 @@ import { cancelStep, resumeWithoutPausing, nextStep, setDebuggerStatement, start
 type GlobalWithPreview = typeof globalThis & {
   __TESTING_LIBRARY_ADDON_VITEST__?: typeof vitestApi;
   IS_REACT_ACT_ENVIRONMENT?: boolean;
-  __STORYBOOK_PREVIEW__?: { onForceRemount?: (args: { storyId: string }) => Promise<void> };
+  __STORYBOOK_PREVIEW__?: StoryPreview;
 };
 const g = globalThis as GlobalWithPreview;
 
@@ -67,7 +69,7 @@ let hiddenStoryId: string | undefined;
 let abortController: AbortController | undefined;
 let setup: Promise<void> | undefined;
 
-const remount = (storyId: string) => g.__STORYBOOK_PREVIEW__?.onForceRemount?.({ storyId });
+const remount = (storyId: string) => remountStory(g.__STORYBOOK_PREVIEW__, storyId);
 
 const hideStory = async (storyId: string | undefined) => {
   if (!storyId || hiddenStoryId === storyId) {
@@ -116,6 +118,7 @@ const run = async ({ runId, storyId, files, stepByStep, debugAt }: RunRequest) =
   abortController = controller;
   const previousActEnvironment = g.IS_REACT_ACT_ENVIRONMENT;
   const restoreFocus = dispatchFocusEventsWithoutWindowFocus();
+  const restoreFilePickers = blockFilePickers();
   let lastTest: RunFinished['lastTest'];
   startStepRun(runId, stepByStep, debugAt);
   setProjectRoot(projectRootOf(files[0]));
@@ -179,6 +182,7 @@ const run = async ({ runId, storyId, files, stepByStep, debugAt }: RunRequest) =
     startStepRun(runId, undefined);
     g.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
     restoreFocus();
+    restoreFilePickers();
     const finished: RunFinished = { runId, cancelled: controller.signal.aborted, lastTest };
     controller.abort();
     channel.emit(RUN_FINISHED, finished);
