@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0
+
+- A failed test now puts a short error message, the source line, and expected and received values first. The full
+  message, stack trace and steps can be expanded, and a failed result can be collapsed.
+- New actions on a failed test: **Inspect DOM before failure** and **Back to live**, **Re-run test**, and **Copy error
+  report**, which offers selectable text when clipboard access is unavailable.
+- Report errors from teardown instead of losing them. Errors in `afterAll` and `onTestFailed` used to be swallowed, so
+  a spec file that looked green can now show a failure. Each error keeps its original stack, and the remaining tests
+  and cleanup still run.
+- Apply the test timeout to `onTestFinished`, `onTestFailed` and cleanups returned from `beforeEach`.
+- Fix `vi.mock` and related calls being found inside strings and JSX, where rewriting them could produce invalid
+  JavaScript. The addon now finds them by parsing the file.
+
 ## 0.2.1
 
 - Fix "cannot render when canvasElement is unset" when running tests after the same story was selected twice in quick
