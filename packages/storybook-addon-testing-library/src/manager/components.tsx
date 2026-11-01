@@ -228,18 +228,63 @@ const StepLink = ({ error, testKey }: { error: ErrorInfo; testKey?: string }) =>
   );
 };
 
+/** Expected and received values, in the colours Vitest uses in the terminal */
+const DiffView = ({ diff }: { diff: string }) => (
+  <Pre>
+    {diff.split('\n').map((line, index) => (
+      <div
+        key={index}
+        style={{
+          color: line.startsWith('Expected') ? '#2E7D32' : line.startsWith('Received') ? '#C62828' : undefined,
+        }}
+      >
+        {line}
+      </div>
+    ))}
+  </Pre>
+);
+
+const errorText = (info: ErrorInfo) =>
+  [info.message, info.diff, info.stack?.split('\n').slice(1).join('\n')].filter(Boolean).join('\n\n');
+
+/** Copies an error, with its stack, to paste into an issue or a chat */
+const CopyButton = ({ text }: { text: string }) => {
+  const [copied, setCopied] = useState(false);
+  return (
+    <LinkButton
+      title="Copy the error and its stack"
+      onClick={() => {
+        navigator.clipboard
+          .writeText(text)
+          .then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          })
+          .catch(() => undefined);
+      }}
+    >
+      {copied ? 'Copied ✓' : 'Copy'}
+    </LinkButton>
+  );
+};
+
 export const ErrorView = ({ error, testKey }: { error: ErrorInfo[]; testKey?: string }) => (
   <>
     {error.map((info, index) => (
       <div key={index}>
-        {info.origin && (
-          <Headline>
-            <Origin>{ORIGINS[info.origin]}</Origin>
-            <StepLink error={info} testKey={testKey} />
-          </Headline>
-        )}
+        <Headline>
+          {info.origin && (
+            <>
+              <Origin>{ORIGINS[info.origin]}</Origin>
+              <StepLink error={info} testKey={testKey} />
+            </>
+          )}
+          <span style={{ marginLeft: 'auto', fontSize: 12 }}>
+            <CopyButton text={errorText(info)} />
+          </span>
+        </Headline>
         <Pre>{info.message}</Pre>
-        {info.diff && <Pre>{info.diff}</Pre>}
+        {info.diff && <DiffView diff={info.diff} />}
         {info.codeFrame && <CodeFrameView codeFrame={info.codeFrame} />}
         {(info.frames?.length || info.stack) && (
           <details>

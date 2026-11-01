@@ -3,7 +3,13 @@
  * transformed; each module carries an inline source map with the original source, so a frame can be mapped
  * and shown with the lines around it.
  */
-import { originalPositionFor, sourceContentFor, TraceMap } from '@jridgewell/trace-mapping';
+import {
+  generatedPositionFor,
+  LEAST_UPPER_BOUND,
+  originalPositionFor,
+  sourceContentFor,
+  TraceMap,
+} from '@jridgewell/trace-mapping';
 
 import type { CodeFrame, ServedPosition, StackFrame } from '../shared/types.ts';
 
@@ -121,15 +127,84 @@ export const logFrame = ({
   line,
   column,
   served,
+  label,
 }: {
   fn?: string;
   file: string;
   line: number;
   column: number;
   served: ServedPosition;
+  /** Shown before the position, like the name of a test */
+  label?: string;
 }) => {
-  const error = new Error(`${file}:${line}:${column}`);
+  const error = new Error(`${label ? `${label}, ` : ''}${file}:${line}:${column}`);
   error.name = 'storybook-addon-testing-library';
   error.stack = `${error.name}: ${error.message}\n    at ${fn ?? '<anonymous>'} (${served.url}:${served.line}:${served.column})`;
   console.log(error);
+};
+
+// Storybook loads hundreds of modules, and the browser stops recording them at 250, before any spec file has run
+try {
+  performance.setResourceTimingBufferSize(5000);
+} catch {
+  // Not in every environment (Node in the unit tests has it, older browsers may not)
+}
+
+/** The URL a spec file was last imported from in this page, with the query the runtime added (see collectFile) */
+const loadedUrl = (importPath: string) =>
+  performance
+    .getEntriesByType('resource')
+    .map(entry => entry.name)
+    .filter(url => {
+      try {
+        const parsed = new URL(url);
+        return decodeURIComponent(parsed.pathname) === importPath && parsed.searchParams.has('spec-tests');
+      } catch {
+        return false;
+      }
+    })
+    .at(-1);
+
+/**
+ * Logs where a test is in its spec file, as logFrame does. DevTools only links to code the page has loaded, so the
+ * test's file must have run since the page loaded; otherwise the position is logged as text.
+ */
+export const logTestLocation = async ({
+  importPath,
+  file,
+  line,
+  name,
+}: {
+  importPath: string;
+  file: string;
+  line: number;
+  name: string;
+}) => {
+  const url = loadedUrl(importPath);
+  const map = url ? await loadMap(url) : undefined;
+  const baseName = importPath.split('/').at(-1)!;
+  // Vite names the source after the URL it served, query included (Counter.spec.tsx?spec-tests=1)
+  const source = map?.sources.find(s => {
+    const path = s?.split('?')[0];
+    return path === baseName || path?.endsWith(`/${baseName}`);
+  });
+  const served =
+    map && source ? generatedPositionFor(map, { source, line, column: 0, bias: LEAST_UPPER_BOUND }) : undefined;
+  if (url && served?.line != null) {
+    // The column in the source, so the message says what the link opens
+    const column = originalPositionFor(map!, { line: served.line, column: served.column }).column ?? 0;
+    // The name goes in the message: DevTools reads a frame's function name only up to a space
+    logFrame({
+      fn: 'test',
+      label: name,
+      file,
+      line,
+      column: column + 1,
+      served: { url, line: served.line, column: served.column + 1 },
+    });
+  } else {
+    console.log(
+      `storybook-addon-testing-library: ${name} is at ${file}:${line}. Run it once to get a link to Sources.`,
+    );
+  }
 };

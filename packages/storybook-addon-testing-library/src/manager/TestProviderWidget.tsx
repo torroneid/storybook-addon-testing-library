@@ -3,7 +3,17 @@ import type { API } from 'storybook/manager-api';
 import { styled } from 'storybook/theming';
 
 import { IconButton, StatusIcon } from './components.tsx';
-import { cancel, runTests, summarize, useResults, useSpecFiles } from './store.ts';
+import {
+  cancel,
+  failedTests,
+  failingStoryIds,
+  nextFailingStory,
+  rerunFailed,
+  runTests,
+  summarize,
+  useResults,
+  useSpecFiles,
+} from './store.ts';
 
 const Container = styled.div(({ theme }) => ({
   display: 'flex',
@@ -45,7 +55,15 @@ export const TestProviderWidget = ({ api }: { api: API }) => {
   const summary = summarize(result);
   const testCount = specFiles.reduce((sum, specFile) => sum + specFile.tests.length, 0);
   const fileErrorCount = Object.values(state.fileErrors).filter(error => error.length > 0).length;
-  const firstFailed = result.find(r => r.status === 'failed' && r.storyIds.length > 0);
+  const failedCount = failedTests(state).length;
+  // Worked out on click: the widget does not re-render when another story is selected
+  const goToNextFailing = () => {
+    const current = api.getCurrentStoryData();
+    const next = nextFailingStory(state, current?.type === 'story' ? current.id : undefined);
+    if (next) {
+      api.selectStory(next);
+    }
+  };
 
   const statusText = state.run
     ? `Running in the canvas… ${state.run.completed} done`
@@ -70,13 +88,22 @@ export const TestProviderWidget = ({ api }: { api: API }) => {
         <Title>Spec-tests</Title>
         <Muted>{statusText}</Muted>
       </div>
-      {firstFailed && !state.run && (
+      {failingStoryIds(state).length > 0 && !state.run && (
         <IconButton
-          title="Go to the first story with a failing test"
-          aria-label="Go to the first story with a failing test"
-          onClick={() => api.selectStory(firstFailed.storyIds[0])}
+          title="Go to the next story with a failed test"
+          aria-label="Go to the next story with a failed test"
+          onClick={goToNextFailing}
         >
           ⚠
+        </IconButton>
+      )}
+      {failedCount > 0 && !state.run && (
+        <IconButton
+          title={`Run the ${failedCount} failed tests again`}
+          aria-label="Run the failed tests again"
+          onClick={() => rerunFailed()}
+        >
+          ↻
         </IconButton>
       )}
       {state.run ? (

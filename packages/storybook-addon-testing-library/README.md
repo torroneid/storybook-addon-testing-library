@@ -151,6 +151,15 @@ Open a story and select the **Tests** panel.
 - The canvas shows what the last test rendered until you press **Show the story again**.
 - Stories with results get a pass/fail status in the sidebar, and the testing widget at the bottom can run every spec.
 - Right-click a component or story in the sidebar to run its tests from there.
+- **↻ Re-run failed** runs only the tests that failed, for the story in the panel or, from the widget, everywhere.
+  **Only failed** hides the rest, and **Next failing story ›** (or ⚠ in the widget) takes you to the next story with
+  a failed test.
+- **</>** on a test logs where it is in the spec file in the browser's console, where a click opens it in _Sources_.
+  The test has to have run since the page loaded.
+- When you save a file in the project, results from before are marked **outdated**. Turn on **Re-run on save** to run
+  the story's tests again on every save instead.
+- Results are kept when you reload Storybook, for as long as the tab is open.
+- Rows open and close with Enter and Space as well as the mouse. A failed test opens by itself, and you can close it.
 
 ## Step by step
 
@@ -162,8 +171,9 @@ Press ⏯ on a test to walk through it.
   `within(...).findBy*`, `waitFor`, `waitForElementToBeRemoved`, `Story.run()` and `Story.play()`. The element the
   step acts on is highlighted in the canvas.
 - `render`, `fireEvent` and `expect` are **logged** in the list. They are synchronous, so the test cannot pause there.
-- **Next ▶** runs the step and pauses at the next one. **⏭ Run the rest** finishes the test. Timeouts are disabled
-  while a test is paused.
+- **Next ▶** (<kbd>→</kbd>) runs the step and pauses at the next one, **◀ Previous** (<kbd>←</kbd>) shows the step
+  before, and <kbd>Esc</kbd> closes step by step. The keys work while the panel has focus, not the canvas. **⏭ Run the
+  rest** finishes the test. Timeouts are disabled while a test is paused.
 
 ## Snapshots
 
@@ -193,8 +203,11 @@ library Vitest's trace view uses. Click a step, or press **◀ Previous**, to se
   _Sources_, where you can set a breakpoint.
 - **Only your DOM.** When a query finds nothing, the DOM in the message is what the test rendered, not Storybook's
   own page.
+- **Expected and received** values are shown in green and red, and **Copy** copies the error with its stack.
+- **The step that failed** is highlighted in the list of steps, and in a long test the steps well before it are folded
+  away.
 - **`console.error`.** Whatever the test and your components logged with `console.error`, such as React's warnings,
-  is listed with the result.
+  is listed with the result, and the row says how many there were.
 - Every failure is also logged in the preview's console, where DevTools shows the stack source-mapped and a click
   opens the line in _Sources_, so you can set a breakpoint there and run the test again.
 

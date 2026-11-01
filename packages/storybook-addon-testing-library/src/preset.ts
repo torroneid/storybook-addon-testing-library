@@ -98,7 +98,7 @@ export const viteFinal = (config: InlineConfig, options: Options & AddonOptions)
 
 export const experimental_serverChannel = async (channel: Channel, options: Options & AddonOptions) => {
   if (options.configType !== 'PRODUCTION') {
-    await startSpecIndex(options, options.specPatterns ?? DEFAULT_SPEC_PATTERNS);
+    await startSpecIndex(options, options.specPatterns ?? DEFAULT_SPEC_PATTERNS, channel);
   }
   return channel;
 };

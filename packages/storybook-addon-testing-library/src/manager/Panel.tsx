@@ -1,12 +1,19 @@
-import React, { useState } from 'react';
-import { useStorybookState } from 'storybook/manager-api';
+import React, { useEffect, useState } from 'react';
+import { useStorybookApi, useStorybookState } from 'storybook/manager-api';
 import { styled } from 'storybook/theming';
 
 import type { SpecFile, StaticTest, StepInfo } from '../shared/types.ts';
 import { ConsoleErrors, ErrorView, IconButton, Button, Spinner, StatusIcon } from './components.tsx';
 import {
   cancel,
+  failedTests,
+  isStale,
   isTestPending,
+  logTestLocation,
+  nextFailingStory,
+  rerunFailed,
+  setOnlyFailed,
+  setWatch,
   previousStep,
   resumeWithoutPausing,
   runTests,
@@ -67,15 +74,65 @@ const FileHeader = styled.div(({ theme }) => ({
   fontWeight: theme.typography.weight.bold,
 }));
 
-const Row = styled.div(({ theme }) => ({
+const RowBase = styled.div<{ stale?: boolean }>(({ theme, stale }) => ({
   display: 'flex',
   alignItems: 'center',
   gap: 8,
   padding: '6px 12px 6px 20px',
   borderBottom: `1px solid ${theme.appBorderColor}`,
   cursor: 'pointer',
+  opacity: stale ? 0.6 : 1,
   '&:hover': { background: theme.background.hoverable },
+  '&:focus-visible': { outline: `2px solid ${theme.color.secondary}`, outlineOffset: -2 },
 }));
+
+/** A row that opens and closes its details, with the mouse or with Enter and Space */
+const Row = ({
+  open,
+  onToggle,
+  children,
+  style,
+  stale,
+}: {
+  open?: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+  stale?: boolean;
+}) => (
+  <RowBase
+    role="button"
+    tabIndex={0}
+    aria-expanded={open}
+    stale={stale}
+    style={style}
+    onClick={onToggle}
+    onKeyDown={event => {
+      if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault();
+        onToggle();
+      }
+    }}
+  >
+    {children}
+  </RowBase>
+);
+
+/**
+ * Whether details are open: failed results open by themselves, but the user's choice wins until the next run
+ * (`runId`), so a failed test can be closed
+ */
+const useOpen = (runId: number | undefined, openByDefault: boolean) => {
+  const [choice, setChoice] = useState<{ runId?: number; open: boolean }>();
+  const open = choice && choice.runId === runId ? choice.open : openByDefault;
+  return [open, () => setChoice({ runId, open: !open })] as const;
+};
+
+const StaleMark = () => (
+  <Muted title="The code changed after this test ran. Run it again to see the result for the current code.">
+    outdated
+  </Muted>
+);
 
 const Details = styled.div(({ theme }) => ({
   padding: '8px 12px 12px 38px',
@@ -106,6 +163,17 @@ const formatName = (name: string[]) => name.join(' › ');
 const TestButtons = ({ specFile, test, disabled }: { specFile: SpecFile; test: StaticTest; disabled: boolean }) => (
   <>
     <IconButton
+      title="Show this test in Sources: logs it in the browser's console (DevTools), where a click opens it"
+      aria-label="Show this test in Sources"
+      style={{ fontFamily: 'monospace', fontSize: 11 }}
+      onClick={event => {
+        event.stopPropagation();
+        logTestLocation(specFile, test);
+      }}
+    >
+      {'</>'}
+    </IconButton>
+    <IconButton
       title="Run this test step by step"
       aria-label="Run this test step by step"
       disabled={disabled}
@@ -130,17 +198,32 @@ const TestButtons = ({ specFile, test, disabled }: { specFile: SpecFile; test: S
   </>
 );
 
-const StepRow = styled.div<{ paused: boolean; clickable: boolean }>(({ theme, paused, clickable }) => ({
-  display: 'flex',
-  alignItems: 'baseline',
-  gap: 8,
+const StepRow = styled.div<{ paused: boolean; clickable: boolean; failed: boolean }>(
+  ({ theme, paused, clickable, failed }) => ({
+    display: 'flex',
+    alignItems: 'baseline',
+    gap: 8,
+    padding: '3px 8px',
+    borderRadius: 4,
+    background: paused ? theme.background.hoverable : failed ? 'rgba(255, 68, 0, 0.1)' : 'transparent',
+    outline: paused ? `1px solid ${theme.color.secondary}` : 'none',
+    cursor: clickable ? 'pointer' : 'default',
+    '&:hover': clickable ? { background: theme.background.hoverable } : {},
+  }),
+);
+
+const LinkText = styled.button(({ theme }) => ({
+  border: 'none',
+  background: 'transparent',
   padding: '3px 8px',
-  borderRadius: 4,
-  background: paused ? theme.background.hoverable : 'transparent',
-  outline: paused ? `1px solid ${theme.color.secondary}` : 'none',
-  cursor: clickable ? 'pointer' : 'default',
-  '&:hover': clickable ? { background: theme.background.hoverable } : {},
+  color: theme.color.secondary,
+  fontSize: theme.typography.size.s1,
+  cursor: 'pointer',
+  '&:hover': { textDecoration: 'underline' },
 }));
+
+/** Steps kept in view before the one that failed, when the earlier ones are folded away */
+const STEPS_BEFORE_FAILURE = 2;
 
 const Code = styled.code<{ muted: boolean }>(({ theme, muted }) => ({
   flex: 1,
@@ -163,17 +246,27 @@ const StepIcon = ({ status }: { status: StepInfo['status'] }) => {
   }
 };
 
-const StepList = ({ steps }: { steps: StepInfo[] }) => {
+const StepList = ({ steps, foldBeforeFailure = false }: { steps: StepInfo[]; foldBeforeFailure?: boolean }) => {
   const { snapshot } = useResults();
+  const [showAll, setShowAll] = useState(false);
+  const failedIndex = steps.findIndex(s => s.status === 'failed');
+  // In a long test the step that failed would be far down, so the steps well before it are folded away
+  const hidden = foldBeforeFailure && !showAll && failedIndex > 0 ? Math.max(0, failedIndex - STEPS_BEFORE_FAILURE) : 0;
   return (
     <div>
-      {steps.map(s => {
+      {hidden > 0 && (
+        <LinkText onClick={() => setShowAll(true)}>
+          Show {hidden} earlier {hidden === 1 ? 'step' : 'steps'}
+        </LinkText>
+      )}
+      {steps.slice(hidden).map(s => {
         const isShown = snapshot?.key === s.key && snapshot.number === s.number;
         const clickable = s.hasSnapshot && !isShown;
         return (
           <StepRow
             key={s.number}
             paused={s.status === 'paused' || isShown}
+            failed={s.status === 'failed'}
             clickable={clickable}
             title={clickable ? 'Show what the canvas looked like before this step' : undefined}
             onClick={clickable ? () => showSnapshot(s.key, s.number) : undefined}
@@ -203,25 +296,37 @@ const TestResultRow = ({
   onlyLastName: boolean;
   handling?: React.ReactNode;
 }) => {
-  const [open, setOpen] = useState(false);
-  const { steps: allSteps } = useResults();
-  const steps = allSteps[result.key] ?? [];
+  const state = useResults();
+  const [open, toggle] = useOpen(result.runId, result.status === 'failed');
+  const steps = state.steps[result.key] ?? [];
   const consoleErrors = result.consoleErrors ?? [];
   const canExpand = result.errors.length > 0 || steps.length > 0 || consoleErrors.length > 0;
+  const stale = isStale(state, result);
   return (
     <>
-      <Row onClick={() => setOpen(!open)} style={{ paddingLeft: onlyLastName ? 38 : 20 }}>
+      <Row
+        open={canExpand ? open : undefined}
+        onToggle={toggle}
+        stale={stale}
+        style={{ paddingLeft: onlyLastName ? 38 : 20 }}
+      >
         <StatusIcon status={result.status} />
         <span style={{ flex: 1 }}>{onlyLastName ? result.name.at(-1) : formatName(result.name)}</span>
-        <Muted>{Math.round(result.durationMs)} ms</Muted>
+        {stale && <StaleMark />}
+        {consoleErrors.length > 0 && (
+          <Muted title={`Logged ${consoleErrors.length} times with console.error`}>
+            ⚠ {consoleErrors.length} console.error
+          </Muted>
+        )}
+        <Muted>{result.status === 'skipped' ? 'skipped' : `${Math.round(result.durationMs)} ms`}</Muted>
         {handling}
         {canExpand && <Muted>{open ? '▾' : '▸'}</Muted>}
       </Row>
-      {(open || result.status === 'failed') && canExpand && (
+      {open && canExpand && (
         <Details>
           <ErrorView error={result.errors} testKey={result.key} />
           <ConsoleErrors messages={consoleErrors} />
-          {steps.length > 0 && <StepList steps={steps} />}
+          {steps.length > 0 && <StepList steps={steps} foldBeforeFailure={result.status === 'failed'} />}
         </Details>
       )}
     </>
@@ -232,21 +337,24 @@ const TestRow = ({ specFile, test, result }: { specFile: SpecFile; test: StaticT
   const state = useResults();
   const waiting = isTestPending(state, specFile, test, result);
   const isRunning = !!state.run;
-  const [open, setOpen] = useState(false);
   const runButtons = <TestButtons specFile={specFile} test={test} disabled={isRunning} />;
+  const summary = summarize(result);
+  const latestRunId = result.reduce<number | undefined>((max, r) => Math.max(max ?? 0, r.runId), undefined);
+  const [open, toggle] = useOpen(latestRunId, summary.failed > 0);
 
   // A test in the source gives one result, unless it is declared with .each/.for
   if (result.length === 1 && !test.isTemplate && !waiting) {
     return <TestResultRow result={result[0]!} onlyLastName={false} handling={runButtons} />;
   }
 
-  const summary = summarize(result);
   const status = summary.failed > 0 ? 'failed' : summary.ok > 0 ? 'passed' : result.length > 0 ? 'skipped' : undefined;
+  const stale = result.some(r => isStale(state, r));
   return (
     <>
-      <Row onClick={() => setOpen(!open)}>
+      <Row open={result.length > 0 ? open : undefined} onToggle={toggle} stale={stale}>
         <StatusIcon status={status} waiting={waiting} />
         <span style={{ flex: 1 }}>{formatName(test.name.map(part => part.text))}</span>
+        {stale && <StaleMark />}
         {result.length > 0 && (
           <Muted>
             {summary.ok}/{result.length} ok
@@ -255,7 +363,7 @@ const TestRow = ({ specFile, test, result }: { specFile: SpecFile; test: StaticT
         {runButtons}
         {result.length > 0 && <Muted>{open ? '▾' : '▸'}</Muted>}
       </Row>
-      {(open || summary.failed > 0) && result.map(r => <TestResultRow key={r.key} result={r} onlyLastName />)}
+      {open && result.map(r => <TestResultRow key={r.key} result={r} onlyLastName />)}
     </>
   );
 };
@@ -265,8 +373,10 @@ const SpecFileView = ({ specFile, storyId }: { specFile: SpecFile; storyId: stri
   const [showOther, setShowOther] = useState<boolean>();
   const resultsInFile = Object.values(state.results).filter(r => r.file === specFile.file);
   const resultsForTest = (test: StaticTest) => resultsInFile.filter(r => r.staticTestId === test.id);
-  const linked = specFile.tests.filter(test => test.storyIds.includes(storyId));
-  const other = specFile.tests.filter(test => !test.storyIds.includes(storyId));
+  const hasFailed = (test: StaticTest) => resultsForTest(test).some(r => r.status === 'failed');
+  const shown = state.onlyFailed ? specFile.tests.filter(hasFailed) : specFile.tests;
+  const linked = shown.filter(test => test.storyIds.includes(storyId));
+  const other = shown.filter(test => !test.storyIds.includes(storyId));
   const unlinked = resultsInFile.filter(r => !r.staticTestId);
   const otherResults = summarize(resultsInFile.filter(r => other.some(test => test.id === r.staticTestId)));
   // Open the section automatically when one of those tests fails, but let the user control it afterwards
@@ -299,7 +409,9 @@ const SpecFileView = ({ specFile, storyId }: { specFile: SpecFile; storyId: stri
         <TestRow key={test.id} specFile={specFile} test={test} result={resultsForTest(test)} />
       ))}
       {linked.length === 0 && (
-        <EmptyState style={{ padding: '8px 20px' }}>No tests in this file use this story.</EmptyState>
+        <EmptyState style={{ padding: '8px 20px' }}>
+          {state.onlyFailed ? 'No failed tests for this story in this file.' : 'No tests in this file use this story.'}
+        </EmptyState>
       )}
       {other.length > 0 && (
         <>
@@ -312,9 +424,11 @@ const SpecFileView = ({ specFile, storyId }: { specFile: SpecFile; storyId: stri
             other.map(test => <TestRow key={test.id} specFile={specFile} test={test} result={resultsForTest(test)} />)}
         </>
       )}
-      {unlinked.map(r => (
-        <TestResultRow key={r.key} result={r} onlyLastName={false} />
-      ))}
+      {unlinked
+        .filter(r => !state.onlyFailed || r.status === 'failed')
+        .map(r => (
+          <TestResultRow key={r.key} result={r} onlyLastName={false} />
+        ))}
     </div>
   );
 };
@@ -348,6 +462,36 @@ const TestViewBanner = () => {
   );
 };
 
+/** → runs the next step, ← shows the previous one, Esc closes step by step. Only while the manager has focus. */
+const useStepShortcuts = ({ canGoForward, canGoBack }: { canGoForward: boolean; canGoBack: boolean }) => {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        target?.closest('input, textarea, select, [contenteditable="true"]')
+      ) {
+        return;
+      }
+      if (event.key === 'ArrowRight' && canGoForward) {
+        nextStep();
+      } else if (event.key === 'ArrowLeft' && canGoBack) {
+        previousStep();
+      } else if (event.key === 'Escape') {
+        closeStepByStep();
+      } else {
+        return;
+      }
+      event.preventDefault();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [canGoForward, canGoBack]);
+};
+
 const StepPanel = () => {
   const state = useResults();
   const specFiles = useSpecFiles();
@@ -364,6 +508,7 @@ const StepPanel = () => {
   const canGoBack = steps.some(
     s => s.hasSnapshot && s.number < (snapshot?.number ?? paused?.number ?? Number.MAX_SAFE_INTEGER),
   );
+  useStepShortcuts({ canGoForward: !!paused, canGoBack });
 
   const status = snapshot
     ? `Showing the snapshot from step ${snapshot.number}`
@@ -388,7 +533,7 @@ const StepPanel = () => {
           ⏮ From start
         </Button>
         <Button title="Show the snapshot from the previous step" disabled={!canGoBack} onClick={previousStep}>
-          ◀ Previous
+          ◀ Previous <Muted>←</Muted>
         </Button>
         <Button
           primary
@@ -396,12 +541,12 @@ const StepPanel = () => {
           disabled={!paused}
           onClick={nextStep}
         >
-          Next ▶
+          Next ▶ <span style={{ opacity: 0.7, fontWeight: 'normal' }}>→</span>
         </Button>
         <Button disabled={!paused} onClick={resumeWithoutPausing}>
           ⏭ Run the rest
         </Button>
-        <IconButton title="Close step by step" aria-label="Close step by step" onClick={closeStepByStep}>
+        <IconButton title="Close step by step (Esc)" aria-label="Close step by step" onClick={closeStepByStep}>
           ✕
         </IconButton>
       </div>
@@ -425,8 +570,45 @@ const StepPanel = () => {
   );
 };
 
+const Toggle = ({
+  checked,
+  onChange,
+  title,
+  children,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  title: string;
+  children: React.ReactNode;
+}) => (
+  <label title={title} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+    <input type="checkbox" checked={checked} onChange={event => onChange(event.target.checked)} />
+    <Muted>{children}</Muted>
+  </label>
+);
+
+/** The results for this story are from before the code last changed */
+const StaleBanner = ({ storyId, stale }: { storyId: string; stale: boolean }) => {
+  const { run, watch } = useResults();
+  if (!stale || run) {
+    return null;
+  }
+  return (
+    <Banner>
+      <span style={{ flex: 1 }}>The code changed after these tests ran, so the results may be out of date.</span>
+      <Button onClick={() => runTests({ type: 'stories', storyIds: [storyId] })}>▶ Run again</Button>
+      {!watch && (
+        <Button title="Run this story's tests every time you save a file" onClick={() => setWatch(true)}>
+          Re-run on save
+        </Button>
+      )}
+    </Banner>
+  );
+};
+
 export const Panel = () => {
   const { storyId } = useStorybookState();
+  const api = useStorybookApi();
   const specFileIndex = useSpecFiles();
   const state = useResults();
   const specFiles = specFileIndex.filter(specFile => specFile.storyIds.includes(storyId));
@@ -434,6 +616,10 @@ export const Panel = () => {
   const resultsForStory = Object.values(state.results).filter(r => r.storyIds.includes(storyId));
   const summary = summarize(resultsForStory);
   const generalErrors = state.fileErrors[''] ?? [];
+  const failedHere = failedTests(state, storyId).length;
+  const nextFailing = nextFailingStory(state, storyId);
+  const failingElsewhere = nextFailing !== undefined && nextFailing !== storyId;
+  const stale = resultsForStory.some(r => isStale(state, r));
 
   if (specFiles.length === 0) {
     return (
@@ -458,13 +644,35 @@ export const Panel = () => {
         >
           ▶ Run this story’s tests ({testsForStory.length})
         </Button>
+        {failedHere > 0 && (
+          <Button disabled={!!state.run} onClick={() => rerunFailed(storyId)}>
+            ↻ Re-run failed ({failedHere})
+          </Button>
+        )}
         {resultsForStory.length > 0 && (
           <Muted>
             {summary.ok} passed · {summary.failed} failed{summary.skipped > 0 && ` · ${summary.skipped} skipped`}
           </Muted>
         )}
+        <span style={{ flex: 1 }} />
+        {failingElsewhere && (
+          <Button title="Go to the next story with a failed test" onClick={() => api.selectStory(nextFailing)}>
+            Next failing story ›
+          </Button>
+        )}
+        <Toggle checked={state.onlyFailed} onChange={setOnlyFailed} title="List only the tests that failed">
+          Only failed
+        </Toggle>
+        <Toggle
+          checked={state.watch}
+          onChange={setWatch}
+          title="Run this story's tests again every time you save a file in the project"
+        >
+          Re-run on save
+        </Toggle>
       </Toolbar>
       <TestViewBanner />
+      <StaleBanner storyId={storyId} stale={stale} />
       <StepPanel />
       {generalErrors.length > 0 && (
         <Details style={{ paddingLeft: 12 }}>

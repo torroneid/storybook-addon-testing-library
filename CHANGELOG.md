@@ -8,6 +8,19 @@
   and from there the code that threw was hard to reach. The failures are still logged in the preview's console, where
   DevTools maps the stack to your files and a click opens the line in _Sources_.
 
+- **↻ Re-run failed** in the panel and in the widget, to run only the tests that failed.
+- **Only failed**, to list just the tests that failed, and **Next failing story ›**, to go through the failures story
+  by story. ⚠ in the widget goes to the next failing story each time, not always the first.
+- **</>** on a test logs where it is in the spec file in the browser's console, where a click opens it in _Sources_.
+- Results from before a file in the project was saved are marked outdated. **Re-run on save** runs the story's tests
+  again on every save.
+- Results are kept when Storybook reloads, for as long as the tab is open.
+- A failed test can be closed; before, its details always stayed open. Rows work with the keyboard.
+- Expected and received values in green and red, a **Copy** button on errors, and the step that failed highlighted,
+  with the steps well before it folded away.
+- The number of `console.error` calls shows on the test's row, and skipped tests say "skipped" instead of "0 ms".
+- Step by step: <kbd>→</kbd> for the next step, <kbd>←</kbd> for the previous one and <kbd>Esc</kbd> to close.
+
 ## 0.2.1
 
 - Fix "cannot render when canvasElement is unset" when running tests after the same story was selected twice in quick
