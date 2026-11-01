@@ -21,22 +21,37 @@ const PROXY_PREFIX = '\0storybook-addon-testing-library/mock:';
 /** Passed in resolve calls the plugin makes itself, so it does not answer them with a proxy */
 const OWN_RESOLVE = { custom: { [PLUGIN_NAME]: { own: true } } };
 
-// vi.mock('path'), vi.mock<Type>("path", …) and vi.mock(import('path'), …).
-// Groups: the call up to the path; import('path') and its path; or 'path' and its path.
-const MOCK_CALL =
-  /(\b(?:vi|vitest)\s*\.\s*(?:mock|doMock|unmock|doUnmock|importActual|importMock)\s*(?:<.*?>)?\s*\(\s*)(?:(import\s*\(\s*(['"`])([^'"`\n]+)\3\s*\))|((['"`])([^'"`\n]+)\6))/g;
-const MOCKS_MODULE = /\b(?:vi|vitest)\s*\.\s*(?:mock|doMock)\s*(?:<.*?>)?\s*\(/;
+const MOCK_METHODS = new Set(['mock', 'doMock', 'unmock', 'doUnmock', 'importActual', 'importMock']);
 
 export const cleanId = (id: string) => id.replace(/[?#].*$/, '');
 
 export type MockCall = { start: number; end: number; path: string };
 
-export const findMockCalls = (code: string): MockCall[] =>
-  [...code.matchAll(MOCK_CALL)].map(match => {
-    const [, prefix, importExpression, , importPath, literal, , literalPath] = match;
-    const start = match.index + prefix.length;
-    return { start, end: start + (importExpression ?? literal).length, path: importPath ?? literalPath };
-  });
+export const findMockCalls = (code: string, file = 'spec.tsx'): MockCall[] => {
+  const source = ts.createSourceFile(file, code, ts.ScriptTarget.Latest, false, scriptKind(file));
+  const calls: MockCall[] = [];
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      ['vi', 'vitest'].includes(node.expression.expression.text) &&
+      MOCK_METHODS.has(node.expression.name.text)
+    ) {
+      const argument = node.arguments[0];
+      const literal =
+        argument && ts.isCallExpression(argument) && argument.expression.kind === ts.SyntaxKind.ImportKeyword
+          ? argument.arguments[0]
+          : argument;
+      if (literal && (ts.isStringLiteral(literal) || ts.isNoSubstitutionTemplateLiteral(literal))) {
+        calls.push({ start: argument.getStart(source), end: argument.end, path: literal.text });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return calls;
+};
 
 // ---------- Export names ----------
 
@@ -191,11 +206,8 @@ export const mockPlugin = (specPatterns: string[], setupFiles: string[]): Plugin
 
   /** Adds what the file mocks; true when there was something new */
   const addTargets = async (file: string, code: string) => {
-    if (!MOCKS_MODULE.test(code)) {
-      return false;
-    }
     let added = false;
-    for (const call of findMockCalls(code)) {
+    for (const call of findMockCalls(code, file)) {
       const key = await resolveWithServer(call.path, file);
       if (key && !targets.has(key)) {
         targets.add(key);
@@ -312,7 +324,7 @@ export const mockPlugin = (specPatterns: string[], setupFiles: string[]): Plugin
       if (id.startsWith('\0') || file.split(path.sep).includes('node_modules') || !mocksModules(file)) {
         return undefined;
       }
-      const calls = findMockCalls(code);
+      const calls = findMockCalls(code, file);
       if (calls.length === 0) {
         return undefined;
       }

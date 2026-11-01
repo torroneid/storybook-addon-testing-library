@@ -329,6 +329,7 @@ export const toErrorInfo = (error: unknown): ErrorInfo => {
     message: stripAnsi(`${error.name && error.name !== 'Error' ? `${error.name}: ` : ''}${error.message}`),
     stack: error.stack && stripAnsi(error.stack),
     diff: hasDiff ? `Expected: ${display(expected)}\nReceived: ${display(actual)}` : undefined,
+    comparison: hasDiff ? { expected: display(expected), actual: display(actual) } : undefined,
   };
 };
 
@@ -353,6 +354,14 @@ export const describeError = async (error: unknown, extra: Pick<ErrorInfo, 'orig
   const info = toErrorInfo(error);
   const { frames, codeFrame } = await mapStack(info.stack);
   return { ...info, origin: extra.origin ?? originOf(error), step: extra.step, frames, codeFrame };
+};
+
+/** Keep each teardown failure's original stack instead of pointing at the runner's AggregateError. */
+export const describeFileErrors = async (error: unknown): Promise<ErrorInfo[]> => {
+  if (error instanceof AggregateError && error.errors.length > 0) {
+    return (await Promise.all(error.errors.map(describeFileErrors))).flat();
+  }
+  return [await describeError(error)];
 };
 
 /**
@@ -471,6 +480,14 @@ const runTest = async (test: Test, name: string[], inheritedErrors: unknown[], s
     currentTestName: name.join(' '),
   });
 
+  const runTeardown = async (action: () => unknown, label: string) => {
+    try {
+      await withTimeout(action(), timeout, label, abortTest);
+    } catch (error) {
+      fail(error);
+    }
+  };
+
   try {
     if (errors.length === 0) {
       try {
@@ -501,21 +518,21 @@ const runTest = async (test: Test, name: string[], inheritedErrors: unknown[], s
         }
       }
       for (const cleanup of cleanups) {
-        await Promise.resolve(cleanup()).catch(error => fail(error));
+        await runTeardown(cleanup, 'beforeEach cleanup');
       }
       for (const suite of [...chain].reverse()) {
         for (const afterEachHook of [...suite.afterEach].reverse()) {
-          await withTimeout(afterEachHook(context), timeout, 'afterEach', abortTest).catch(error => fail(error));
+          await runTeardown(() => afterEachHook(context), 'afterEach');
         }
       }
     }
     if (errors.length > 0) {
       for (const hook of failedHooks) {
-        await Promise.resolve(hook(context)).catch(() => undefined);
+        await runTeardown(() => hook(context), 'onTestFailed');
       }
     }
     for (const hook of [...finishedHooks].reverse()) {
-      await Promise.resolve(hook(context)).catch(error => fail(error));
+      await runTeardown(() => hook(context), 'onTestFinished');
     }
   } finally {
     endTestSteps();
@@ -554,6 +571,7 @@ const runSuite = async (
   skip: boolean,
   onlyInFile: boolean,
   run: RunOptions,
+  teardownErrors: unknown[],
 ) => {
   const children = suite.children.filter(b => containsSelected(b, namePath, run.isSelected));
   if (children.length === 0) {
@@ -584,6 +602,7 @@ const runSuite = async (
         shouldSkip || !(isOnly || hasOnly(node)),
         onlyInFile && !(node.mode === 'only' || suite.mode === 'only'),
         run,
+        teardownErrors,
       );
     } else {
       await runTest(node, [...namePath, node.name], errors, shouldSkip || !isOnly, run);
@@ -591,7 +610,11 @@ const runSuite = async (
   }
   if (!shouldSkip) {
     for (const afterAllHook of [...suite.afterAll].reverse()) {
-      await withTimeout(afterAllHook({} as TestContext), DEFAULT_TIMEOUT, 'afterAll').catch(() => undefined);
+      try {
+        await withTimeout(afterAllHook({} as TestContext), DEFAULT_TIMEOUT, 'afterAll');
+      } catch (error) {
+        teardownErrors.push(error);
+      }
     }
   }
 };
@@ -608,7 +631,15 @@ export const runFile = async (root: Suite, run: RunOptions) => {
       throw error;
     });
     await globalBeforeAll;
-    await runSuite(root, [], [], false, hasOnly(root), run);
+    const teardownErrors: unknown[] = [];
+    await runSuite(root, [], [], false, hasOnly(root), run, teardownErrors);
+    // Report at file level after every suite has finished, so teardown cannot hide failures or skip sibling suites.
+    if (teardownErrors.length > 0) {
+      throw new AggregateError(
+        teardownErrors,
+        `afterAll failed:\n${teardownErrors.map(error => toErrorInfo(error).message).join('\n')}`,
+      );
+    }
   } finally {
     endFile();
   }

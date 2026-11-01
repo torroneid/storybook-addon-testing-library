@@ -116,6 +116,7 @@ export type ErrorInfo = {
   message: string;
   stack?: string;
   diff?: string;
+  comparison?: { expected: string; actual: string };
   origin?: ErrorOrigin;
   /** The step the error happened during (failed) or after */
   step?: { number: number; label: string; failed: boolean };

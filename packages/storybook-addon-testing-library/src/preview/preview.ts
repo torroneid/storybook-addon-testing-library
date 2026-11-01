@@ -34,7 +34,7 @@ import {
   loadSetupFiles,
   markDomBeforeTests,
   collectFile,
-  describeError,
+  describeFileErrors,
   endFile,
   vitestApi,
 } from './runtime.ts';
@@ -170,14 +170,14 @@ const run = async ({ runId, storyId, files, stepByStep, debugAt }: RunRequest) =
           },
         });
       } catch (error) {
-        channel.emit(FILE_ERROR, { runId, file: file.file, error: [await describeError(error)] });
+        channel.emit(FILE_ERROR, { runId, file: file.file, error: await describeFileErrors(error) });
       } finally {
         // The file may have faked timers or recorded mocks while it loaded, and never got to run
         endFile();
       }
     }
   } catch (error) {
-    channel.emit(FILE_ERROR, { runId, file: '', error: [await describeError(error)] });
+    channel.emit(FILE_ERROR, { runId, file: '', error: await describeFileErrors(error) });
   } finally {
     startStepRun(runId, undefined);
     g.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;

@@ -213,34 +213,73 @@ const TestResultRow = ({
   onlyLastName: boolean;
   handling?: React.ReactNode;
 }) => {
-  const [open, setOpen] = useState(false);
+  const [expanded, setExpanded] = useState<boolean>();
+  const open = expanded ?? result.status === 'failed';
   const { steps: allSteps, run } = useResults();
   const steps = allSteps[result.key] ?? [];
   const consoleErrors = result.consoleErrors ?? [];
+  const failureStep = result.errors.find(error => error.step)?.step;
+  const snapshotStep = steps.find(step => step.number === failureStep?.number && step.hasSnapshot);
   const canExpand = result.errors.length > 0 || steps.length > 0 || consoleErrors.length > 0;
   return (
     <>
-      <Row onClick={() => setOpen(!open)} style={{ paddingLeft: onlyLastName ? 38 : 20 }}>
+      <Row onClick={() => setExpanded(!open)} style={{ paddingLeft: onlyLastName ? 38 : 20 }}>
+        <IconButton
+          aria-label={`${open ? 'Collapse' : 'Expand'} ${formatName(result.name)}`}
+          aria-expanded={open}
+          disabled={!canExpand}
+          onClick={event => {
+            event.stopPropagation();
+            setExpanded(!open);
+          }}
+        >
+          {open ? '▾' : '▸'}
+        </IconButton>
         <StatusIcon status={result.status} />
         <span style={{ flex: 1 }}>{onlyLastName ? result.name.at(-1) : formatName(result.name)}</span>
         <Muted>{Math.round(result.durationMs)} ms</Muted>
         {handling}
-        {canExpand && <Muted>{open ? '▾' : '▸'}</Muted>}
       </Row>
-      {(open || result.status === 'failed') && canExpand && (
+      {open && canExpand && (
         <Details>
-          {result.status === 'failed' && result.staticTestId && (
-            <Button
-              disabled={!!run}
-              title={`Run the test again and stop in DevTools just before the step that failed (${DEBUG_SHORTCUT_TEXT})`}
-              onClick={() => debugTest(result)}
-            >
-              Debug in DevTools <span style={{ opacity: 0.7, fontWeight: 'normal' }}>{DEBUG_SHORTCUT_TEXT}</span>
-            </Button>
+          {result.status === 'failed' && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+              {snapshotStep && (
+                <Button onClick={() => showSnapshot(result.key, snapshotStep.number)}>
+                  Inspect DOM before failure
+                </Button>
+              )}
+              {result.staticTestId && (
+                <>
+                  <Button
+                    disabled={!!run}
+                    onClick={() => runTests({ type: 'test', file: result.file, testId: result.staticTestId! })}
+                  >
+                    Re-run test
+                  </Button>
+                  <Button
+                    primary
+                    disabled={!!run}
+                    title={`Open DevTools first, then re-run to the failing step (${DEBUG_SHORTCUT_TEXT})`}
+                    onClick={() => debugTest(result)}
+                  >
+                    Debug in DevTools <span style={{ opacity: 0.7, fontWeight: 'normal' }}>{DEBUG_SHORTCUT_TEXT}</span>
+                  </Button>
+                  <Muted>Open DevTools first (F12). The test pauses before the failing step.</Muted>
+                </>
+              )}
+            </div>
           )}
-          <ErrorView error={result.errors} testKey={result.key} />
+          <ErrorView error={result.errors} testKey={result.key} testName={formatName(result.name)} />
           <ConsoleErrors messages={consoleErrors} />
-          {steps.length > 0 && <StepList steps={steps} />}
+          {steps.length > 0 && (
+            <details>
+              <summary style={{ cursor: 'pointer', padding: '6px 0' }}>
+                Steps ({steps.length}){failureStep ? ` · failure at step ${failureStep.number}` : ''}
+              </summary>
+              <StepList steps={steps} />
+            </details>
+          )}
         </Details>
       )}
     </>
@@ -514,6 +553,12 @@ export const Panel = () => {
       <DebugBanner />
       <TestViewBanner />
       <StepPanel />
+      {state.snapshot && !state.stepByStep && (
+        <Banner>
+          <span style={{ flex: 1 }}>Showing the DOM snapshot before step {state.snapshot.number}.</span>
+          <Button onClick={hideSnapshot}>Back to live</Button>
+        </Banner>
+      )}
       {generalErrors.length > 0 && (
         <Details style={{ paddingLeft: 12 }}>
           <ErrorView error={generalErrors} />
