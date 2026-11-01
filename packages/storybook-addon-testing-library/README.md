@@ -184,6 +184,14 @@ library Vitest's trace view uses. Click a step, or press **◀ Previous**, to se
 
 ## When a test fails
 
+The result opens automatically with a short error message, the source line, and expected and received values side
+by side when the assertion supplies them. Expand **Full error message**, **Stack trace** or **Steps** for more detail.
+You can collapse a failed result to focus on another one.
+
+- **Inspect DOM before failure** shows the saved snapshot without running the test again. **Back to live** returns
+  to the current canvas. The snapshot button appears when the failing step has a saved snapshot.
+- **Re-run test** runs the selected test again. **Copy error report** copies the test name, full error, comparison,
+  step and source details; if clipboard access is unavailable, the panel offers selectable text instead.
 - **What failed, and where.** Each error says what kind of failure it is — an assertion, an element Testing Library
   could not find, an error thrown in your code (in a click handler, say), an unhandled promise rejection or a timeout —
   and the step it happened in. Click the step to see the DOM just before it.

@@ -3,6 +3,7 @@ import { keyframes, styled } from 'storybook/theming';
 
 import type { CodeFrame, ErrorInfo, ErrorOrigin, StackFrame, TestStatus } from '../shared/types.ts';
 import { showSnapshot } from './store.ts';
+import { errorReport } from './errorReport.ts';
 
 const spin = keyframes({ from: { transform: 'rotate(0deg)' }, to: { transform: 'rotate(360deg)' } });
 
@@ -217,26 +218,105 @@ const StepLink = ({ error, testKey }: { error: ErrorInfo; testKey?: string }) =>
   );
 };
 
-export const ErrorView = ({ error, testKey }: { error: ErrorInfo[]; testKey?: string }) => (
+const ErrorCard = styled.section(({ theme }) => ({
+  margin: '8px 0',
+  padding: 12,
+  border: `1px solid ${theme.appBorderColor}`,
+  borderLeft: '3px solid #FF4400',
+  borderRadius: 4,
+  display: 'grid',
+  gap: 8,
+  minWidth: 0,
+}));
+
+const Comparison = styled.div({
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(min(240px, 100%), 1fr))',
+  gap: 8,
+});
+
+const ErrorDetail = ({ info, testKey, testName }: { info: ErrorInfo; testKey?: string; testName?: string }) => {
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'manual'>('idle');
+  const report = errorReport(info, testName);
+  const headline = info.message.split('\n').find(line => line.trim()) ?? 'Unknown error';
+  const hasMore = info.message.trim() !== headline.trim();
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(report);
+      setCopyState('copied');
+    } catch {
+      setCopyState('manual');
+    }
+  };
+  return (
+    <ErrorCard aria-label="Error details">
+      <Headline style={{ marginTop: 0 }}>
+        <Origin>{info.origin ? ORIGINS[info.origin] : 'Error'}</Origin>
+        {testKey && <StepLink error={info} testKey={testKey} />}
+        <Button style={{ marginLeft: 'auto' }} onClick={copy}>
+          {copyState === 'copied' ? 'Copied' : 'Copy error report'}
+        </Button>
+      </Headline>
+      <div style={{ fontFamily: 'monospace', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{headline}</div>
+      {info.comparison ? (
+        <Comparison>
+          <div style={{ minWidth: 0 }}>
+            <strong>Expected</strong>
+            <Pre style={{ background: 'rgba(102, 191, 60, 0.12)', color: 'inherit' }}>{info.comparison.expected}</Pre>
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <strong>Received</strong>
+            <Pre style={{ background: 'rgba(255, 68, 0, 0.12)', color: 'inherit' }}>{info.comparison.actual}</Pre>
+          </div>
+        </Comparison>
+      ) : info.diff ? (
+        <Pre>{info.diff}</Pre>
+      ) : null}
+      {info.codeFrame && <CodeFrameView codeFrame={info.codeFrame} />}
+      {hasMore && (
+        <details>
+          <summary style={{ cursor: 'pointer' }}>Full error message</summary>
+          <Pre>{info.message}</Pre>
+        </details>
+      )}
+      {(info.frames?.length || info.stack) && (
+        <details>
+          <summary style={{ cursor: 'pointer' }}>Stack trace</summary>
+          {info.frames?.length ? <FrameList frames={info.frames} /> : <Pre>{info.stack}</Pre>}
+        </details>
+      )}
+      {copyState === 'manual' && (
+        <label>
+          Copy this report manually:
+          <textarea
+            aria-label="Error report"
+            readOnly
+            value={report}
+            onFocus={event => event.currentTarget.select()}
+            rows={8}
+            style={{ display: 'block', width: '100%', boxSizing: 'border-box' }}
+          />
+        </label>
+      )}
+      <span role="status" style={{ fontSize: 12 }}>
+        {copyState === 'copied' ? 'Error report copied to clipboard.' : ''}
+      </span>
+    </ErrorCard>
+  );
+};
+
+export const ErrorView = ({
+  error,
+  testKey,
+  testName,
+}: {
+  error: ErrorInfo[];
+  testKey?: string;
+  testName?: string;
+}) => (
   <>
     {error.map((info, index) => (
-      <div key={index}>
-        {info.origin && (
-          <Headline>
-            <Origin>{ORIGINS[info.origin]}</Origin>
-            <StepLink error={info} testKey={testKey} />
-          </Headline>
-        )}
-        <Pre>{info.message}</Pre>
-        {info.diff && <Pre>{info.diff}</Pre>}
-        {info.codeFrame && <CodeFrameView codeFrame={info.codeFrame} />}
-        {(info.frames?.length || info.stack) && (
-          <details>
-            <summary style={{ cursor: 'pointer', fontSize: 12 }}>Stack</summary>
-            {info.frames?.length ? <FrameList frames={info.frames} /> : <Pre>{info.stack}</Pre>}
-          </details>
-        )}
-      </div>
+      <ErrorDetail key={`${index}:${info.message}`} info={info} testKey={testKey} testName={testName} />
     ))}
   </>
 );

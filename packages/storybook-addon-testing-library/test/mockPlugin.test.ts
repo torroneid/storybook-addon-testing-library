@@ -23,6 +23,26 @@ describe('findMockCalls', () => {
     expect(calls.map(call => call.path)).toEqual(['./a', './b', './c', 'd']);
     expect(calls.map(call => code.slice(call.start, call.end))).toEqual([`'./a'`, `"./b"`, `import('./c')`, `'d'`]);
   });
+  it('ignores mock-like text in strings, comments, regexes and JSX', () => {
+    const code = [
+      `const message = "vi.mock('./string')";`,
+      "const template = `vi.mock('./template')`;",
+      `// vi.mock('./comment')`,
+      `/* vi.mock('./block') */`,
+      `const regex = /vi.mock('regex')/;`,
+      `<div title="vi.mock('./attribute')">vi.mock('./text')</div>;`,
+      `other.vi.mock('./other');`,
+      'vi.mock(`./${dynamic}`);',
+    ].join('\n');
+    expect(findMockCalls(code)).toEqual([]);
+  });
+
+  it('finds calls with comments and nested type arguments and decodes escaped paths', () => {
+    const code = String.raw`vi /* comment */ .mock<Promise<Record<string, unknown>>>("./fo\u006f");`;
+    const calls = findMockCalls(code, 'spec.ts');
+    expect(calls.map(call => call.path)).toEqual(['./foo']);
+    expect(code.slice(calls[0].start, calls[0].end)).toBe(String.raw`"./fo\u006f"`);
+  });
 });
 
 describe('exportNames', () => {
